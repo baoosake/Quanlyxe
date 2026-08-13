@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hệ Thống Quản Lý Nhà Xe - Phiên Bản Pro (V25)</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+        body { display: flex; height: 100vh; overflow: hidden; background-color: #f4f6f9; }
+        
+        #loginScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #2c3e50; z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .login-box { background: white; padding: 30px; border-radius: 10px; width: 100%; max-width: 350px; box-shadow: 0 5px 20px rgba(0,0,0,0.2); text-align: center; }
+        .login-box h2 { color: #1a73e8; margin-bottom: 20px; font-size: 20px; }
+        .login-input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
+        .login-btn { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 15px; transition: 0.2s;}
+        .login-btn:hover { background: #1557b0; }
+        .btn-back { background: none; border: none; color: #dc3545; margin-top: 15px; cursor: pointer; text-decoration: underline; font-size: 13px; }
+
+        .sidebar { width: 55%; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; z-index: 10; box-shadow: 2px 0 10px rgba(0,0,0,0.05); }
+        .tabs { display: flex; border-bottom: 2px solid #1a73e8; background: #fff; overflow-x: auto; }
+        .tab-btn { flex: 1; padding: 12px 5px; font-weight: bold; font-size: 12px; border: none; background: #e8eaed; cursor: pointer; transition: 0.2s; text-align: center; display: none; white-space: nowrap; }
+        .tab-btn.active { background: #1a73e8; color: white; }
+        .tab-content { padding: 15px; overflow-y: auto; flex: 1; display: none; }
+        .tab-content.active { display: block; }
+        
+        .form-row { display: flex; gap: 10px; margin-bottom: 10px; }
+        .form-group { flex: 1; }
+        .form-group label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 12px; color: #444; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; outline: none; }
+        
+        button.btn-calc { background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 4px; font-weight: bold; cursor: pointer; width: 100%; font-size: 14px; transition: 0.2s;}
+        button.btn-calc:hover { background: #1557b0; }
+        button.btn-submit { background-color: #28a745; color: white; border: none; padding: 14px; width: 100%; border-radius: 5px; font-size: 15px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        
+        .seat-container { background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 10px; }
+        .seat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .seat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .seat-box { padding: 8px 0; text-align: center; border: 2px solid #ccc; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; background: white; transition: 0.2s; }
+        .seat-box.selected { background: #1a73e8; color: white; border-color: #1a73e8; }
+        .seat-box.booked { background: #dc3545; color: white; border-color: #dc3545; cursor: not-allowed; opacity: 0.9; }
+
+        .table-responsive { width: 100%; overflow-x: auto; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .compact-table { width: 100%; border-collapse: collapse; font-size: 12px; background: white; min-width: 500px; }
+        .compact-table th, .compact-table td { border: 1px solid #ddd; padding: 10px 6px; text-align: center; vertical-align: middle; }
+        .compact-table th { background-color: #f1f3f4; color: #333; }
+        .badge { padding: 4px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
+        
+        .driver-card { background: white; border-left: 5px solid #ffc107; padding: 15px; border-radius: 8px; margin-top: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: left; }
+        .driver-card.da-don { border-left-color: #17a2b8; opacity: 0.8; }
+        .btn-driver { border: none; padding: 10px; border-radius: 5px; font-weight: bold; width: 100%; cursor: pointer; font-size: 13px; }
+        
+        .alert-panel { background: #f8d7da; border: 1px solid #f5c6cb; border-left: 5px solid #dc3545; padding: 12px; border-radius: 6px; margin-bottom: 15px; display: none; }
+        .alert-item { font-size: 12px; color: #dc3545; font-weight: bold; margin-bottom: 4px; border-bottom: 1px dashed #f5c6cb; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+        @keyframes flashRed { 0% { background-color: #f8d7da; } 50% { background-color: #f5c6cb; } 100% { background-color: #f8d7da; } }
+        .flashing { animation: flashRed 1.5s infinite; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 15px; }
+        .modal-content { background: white; padding: 20px; border-radius: 10px; text-align: center; width: 100%; max-width: 440px; position: relative; }
+        .close-modal { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #555; z-index: 10; }
+        
+        .map-container { width: 45%; height: 100vh; position: relative; border-left: 3px solid #1a73e8; z-index: 15; box-shadow: -3px 0 10px rgba(0,0,0,0.1); }
+        #map { width: 100%; height: 100%; }
+        
+        .user-bar { background: #343a40; color: white; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; }
+        .btn-logout { background: #dc3545; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; margin-left:10px;}
+        .network-status { font-size: 11px; padding: 4px 8px; border-radius: 10px; background: #28a745; color: white;}
+        .gps-status { font-size: 11px; padding: 4px 8px; border-radius: 10px; background: #ff9800; color: white; display: none; margin-left: 5px; transition: 0.3s;}
+        .gps-status.active { background: #28a745; }
+        .phoi-xe-box { background: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 8px; margin-top: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);}
+        
+        .bus-icon { font-size: 16px; background: white; border-radius: 50%; display:flex; justify-content:center; align-items:center; box-shadow: 0 0 8px rgba(0,0,0,0.6); border: 2px solid #1a73e8;}
+        
+        .mini-dash-card { flex: 1; background: white; padding: 10px 5px; border-radius: 6px; border: 1px solid #ddd; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: 0.2s; min-width: 70px; }
+        .mini-dash-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .mini-dash-card b { display: block; font-size: 15px; margin-top: 4px; }
+        
+        .leaflet-routing-container { display: none !important; }
+
+        .video-container { background: #000; border-radius: 8px; overflow: hidden; height: 250px; margin-bottom: 15px; border: 2px solid #1a73e8; position: relative; display: flex; justify-content: center; align-items: center; color: white; font-size: 14px; text-align: center; padding: 10px; }
+        .video-container video { width: 100%; height: 100%; object-fit: cover; }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; overflow: auto; height: auto; }
+            .sidebar { width: 100%; height: auto; min-height: 100vh; border-right: none; }
+            .map-container { width: 100%; height: 400px; border-left: none; border-top: 3px solid #1a73e8; }
+            .form-row { flex-direction: column; gap: 8px; }
+            .form-group input, .form-group select { font-size: 16px; }
+            .seat-grid { grid-template-columns: repeat(4, 1fr); }
+            #adminMiniDash { flex-wrap: wrap; }
+            .mini-dash-card { min-width: 45%; margin-bottom: 5px; }
+            .action-buttons { flex-direction: column; width: 100%; gap: 5px; }
+            .action-buttons input, .action-buttons select, .action-buttons button { width: 100%; margin-top: 5px; }
+            .tab-btn { font-size: 11px; padding: 12px 2px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- MÀN HÌNH ĐĂNG NHẬP -->
+    <div id="loginScreen">
+        <div class="login-box" id="loginMain">
+            <h2>🚌 QUẢN LÝ NHÀ XE</h2>
+            <p style="font-size:13px; color:#666; margin-bottom:15px;">Vui lòng đăng nhập để tiếp tục</p>
+            <input type="text" id="username" class="login-input" placeholder="Tên đăng nhập (admin, nhanvien, taixe)">
+            <input type="password" id="password" class="login-input" placeholder="Mật khẩu">
+            <button class="login-btn" onclick="checkLogin()">ĐĂNG NHẬP</button>
+        </div>
+
+        <div class="login-box" id="loginDriverSelect" style="display:none;">
+            <h2>🚍 LỰA CHỌN PHƯƠNG TIỆN</h2>
+            <p style="font-size:13px; color:#666; margin-bottom:15px;">Xác nhận xe bạn đang điều khiển hôm nay</p>
+            <select id="driverBusPicker" class="login-input" style="font-weight:bold; color:#1a73e8;">
+                <option value="77H-093.15">🚌 Xe 01 (Biển 77H-093.15)</option>
+                <option value="77H-093.25">🚌 Xe 02 (Biển 77H-093.25)</option>
+                <option value="77H-093.31">🚌 Xe 03 (Biển 77H-093.31)</option>
+                <option value="77H-093.37">🚌 Xe 04 (Biển 77H-093.37)</option>
+            </select>
+            <button class="login-btn" onclick="confirmDriverBus()" style="background:#28a745;">🚀 BẮT ĐẦU CA LÀM</button>
+            <button class="btn-back" onclick="location.reload()">Quay lại đăng nhập</button>
+        </div>
+    </div>
+
+    <!-- HỆ THỐNG CHÍNH -->
+    <div class="sidebar" id="mainSystem" style="display:none;">
+        <div class="user-bar">
+            <span id="userInfoText">Đang đăng nhập...</span>
+            <div style="display: flex; align-items: center;">
+                <span id="networkStatus" class="network-status">🟢 Cloud</span>
+                <span id="gpsStatus" class="gps-status">📍 Lấy tọa độ GPS...</span>
+                <button class="btn-logout" onclick="logout()">Thoát</button>
+            </div>
+        </div>
+
+        <!-- MENU TABS -->
+        <div class="tabs">
+            <button class="tab-btn" id="btnTab1" onclick="switchTab('tab-add', this)">1. ĐẶT VÉ</button>
+            <button class="tab-btn" id="btnTab2" onclick="switchTab('tab-admin', this)">2. ĐIỀU HÀNH</button>
+            <button class="tab-btn" id="btnTab3" onclick="switchTab('tab-driver', this)">3. TÀI XẾ</button>
+            <button class="tab-btn" id="btnTab4" onclick="switchTab('tab-bi', this)">4. AI & BÁO CÁO</button>
+            <button class="tab-btn" id="btnTab5" onclick="switchTab('tab-tracking', this)">5. CAMERA XE & BẢO DƯỠNG</button>
+        </div>
+
+        <!-- TAB 1: THÊM ĐƠN -->
+        <div id="tab-add" class="tab-content">
+            <form id="tripForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Loại Đơn</label>
+                        <select id="type" onchange="toggleType()"><option value="Khách">👤 Khách đi xe</option><option value="Hàng">📦 Gửi hàng hóa</option></select>
+                    </div>
+                    <div class="form-group"><label>Ngày khởi hành</label><input type="date" id="date" required onchange="renderSeats()"></div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label style="color:#d93025">Tuyến Đường (Hướng đi)</label>
+                        <select id="routeSelect" onchange="updateRouteDefault()" style="border:1px solid #d93025; font-weight:bold;">
+                            <option value="T-B">📍 Tam Quan ➔ Bảo Lộc</option>
+                            <option value="B-T">📍 Bảo Lộc ➔ Tam Quan</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label style="color:#1a73e8">Điều xe (Biển số)</label>
+                        <select id="busSelect" onchange="renderSeats()" style="border:1px solid #1a73e8; font-weight:bold;">
+                            <option value="77H-093.15">🚌 Xe 01 (Biển 77H-093.15)</option>
+                            <option value="77H-093.25">🚌 Xe 02 (Biển 77H-093.25)</option>
+                            <option value="77H-093.31">🚌 Xe 03 (Biển 77H-093.31)</option>
+                            <option value="77H-093.37">🚌 Xe 04 (Biển 77H-093.37)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="seat-container" id="seatContainer">
+                    <div class="seat-header">
+                        <span style="font-size: 13px; font-weight:bold; color:#1a73e8;">SƠ ĐỒ 24 GIƯỜNG:</span>
+                        <input type="text" id="seatInput" readonly placeholder="Chưa chọn" style="width: 100px; padding: 6px; font-weight:bold; text-align:center; border: 1px solid #1a73e8; border-radius:4px; font-size:14px;">
+                    </div>
+                    <div class="seat-grid" id="seatMap"></div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;"><label>Tên hành khách / Người nhận</label><input type="text" id="name" required></div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Số ĐT (Zalo)</label>
+                        <input type="text" id="phone" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group"><label>🟢 Nơi Đón / Gửi</label><input type="text" id="pickup" required></div>
+                    <div class="form-group"><label>🔴 Nơi Trả / Nhận</label><input type="text" id="dropoff" required></div>
+                </div>
+
+                <button type="button" class="btn-calc" id="btnFindRoute" onclick="findRouteOnMap()">📍 DÒ ĐƯỜNG TRÊN BẢN ĐỒ</button>
+
+                <div class="form-row" style="margin-top: 15px;">
+                    <div class="form-group"><label>Giá vé (VNĐ)</label><input type="number" id="price" required onkeyup="syncPrice()" placeholder="Tự nhập giá vé..."></div>
+                    <div class="form-group"><label>Thực thu</label><input type="number" id="finalPrice" required readonly style="background:#e8f0fe; font-weight:bold; color:#1a73e8;"></div>
+                    <div class="form-group">
+                        <label>Thu tiền</label>
+                        <select id="paymentStatus">
+                            <option value="Chưa thu">Chưa thu tiền</option>
+                            <option value="Đã cọc">Đã cọc (Giữ chỗ)</option>
+                            <option value="Đã CK">Chuyển khoản (VietQR)</option>
+                            <option value="Tiền mặt">Tiền mặt</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn-submit">💾 LƯU CHUYẾN</button>
+            </form>
+        </div>
+
+        <!-- TAB 2: ĐIỀU HÀNH ADMIN -->
+        <div id="tab-admin" class="tab-content">
+            <div id="alertPanel" class="alert-panel flashing">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; border-bottom: 1px solid #f5c6cb; padding-bottom: 4px;">
+                    <h3 style="color: #721c24; font-size: 13px; margin: 0;">🚨 HỆ THỐNG AI PHÁT HIỆN RỦI RO ĐỊNH VỊ!</h3>
+                    <button onclick="clearAlerts()" style="background: #dc3545; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor:pointer;">🗑️ Dọn dẹp lỗi</button>
+                </div>
+                <div id="alertList"></div>
+            </div>
+
+            <div style="display: flex; justify-content:space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="color:#1a73e8; font-size:16px;">📋 DANH SÁCH HÀNH KHÁCH</h3>
+                <button onclick="simulateGPSFraud()" style="background:#dc3545; color:white; border:none; padding:8px 10px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer;">🤖 Test Lỗi Định Vị</button>
+            </div>
+
+            <div id="adminMiniDash" style="display: flex; gap: 6px; margin-bottom: 15px;"></div>
+            
+            <div class="action-buttons" style="display: flex; gap: 8px; align-items: center; margin-bottom: 15px; flex-wrap: wrap;">
+                <input type="date" id="filterDateAdmin" onchange="renderAdminList()" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; flex: 1;">
+                <select id="filterBusAdmin" onchange="renderAdminList()" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-weight:bold; color:#1a73e8; flex: 1;">
+                    <option value="All">Tổng 4 Xe</option>
+                    <option value="77H-093.15">Xe 01 (77H-093.15)</option>
+                    <option value="77H-093.25">Xe 02 (77H-093.25)</option>
+                    <option value="77H-093.31">Xe 03 (77H-093.31)</option>
+                    <option value="77H-093.37">Xe 04 (77H-093.37)</option>
+                </select>
+                <input type="text" id="searchAdmin" placeholder="🔍 Tìm tên/SĐT..." onkeyup="renderAdminList()" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; flex: 1.5; min-width: 120px;">
+                <button onclick="exportToExcel()" style="background:#17a2b8; color:white; border:none; padding:8px 10px; border-radius:4px; font-size:13px; font-weight:bold; cursor:pointer; flex: 1;">📊 Xuất Excel</button>
+                <button id="btnCleanData" onclick="confirmCleanData()" style="background:#6c757d; color:white; border:none; padding:8px 10px; border-radius:4px; font-size:13px; font-weight:bold; cursor:pointer; flex: 1;">🧹 Dọn dẹp</button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="compact-table">
+                    <thead><tr><th width="15%">Phòng</th><th width="25%">Khách</th><th width="35%">Đón - Trả</th><th width="25%">Chức năng</th></tr></thead>
+                    <tbody id="adminTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 3: TÀI XẾ & LƠ XE -->
+        <div id="tab-driver" class="tab-content" style="background: #e9ecef;">
+            <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
+                <span id="driverBusName" style="color:#1a73e8; font-weight:bold; font-size:15px;">Xe đang lái</span>
+                <input type="date" id="filterDateDriver" onchange="renderDriverList()" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+            </div>
+            
+            <div id="driverList"></div>
+            
+            <div class="phoi-xe-box">
+                <h3 style="color:#856404; font-size:14px; margin-bottom:10px;">📋 CHỐT PHƠI & KHAI CHI PHÍ DỌC ĐƯỜNG</h3>
+                <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:5px;">
+                    <span>Khách đi chuyến này:</span> <strong id="phoiTotalCus">0</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:15px;">
+                    <span>Tiền mặt Lơ xe đang cầm:</span> <strong id="phoiCash" style="color:green; font-size:18px;">0đ</strong>
+                </div>
+                <div style="display:flex; flex-direction: column; gap: 8px; margin-bottom: 15px;">
+                    <input type="number" id="phoiChiPhi" placeholder="Tiền chi dọc đường..." style="padding:10px; border:1px solid #ccc; border-radius:4px; font-size:14px;">
+                    <input type="text" id="phoiNote" placeholder="Lý do (cơm, cầu đường...)" style="padding:10px; border:1px solid #ccc; border-radius:4px; font-size:14px;">
+                </div>
+                <button onclick="chotPhoiXe()" style="background:#28a745; color:white; border:none; padding:12px; border-radius:5px; width:100%; font-weight:bold; cursor:pointer; font-size:14px;">🚀 GỬI PHƠI & CHI PHÍ VỀ KẾ TOÁN</button>
+            </div>
+        </div>
+
+        <!-- TAB 4: AI & BÁO CÁO -->
+        <div id="tab-bi" class="tab-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <input type="date" id="filterDateBI" onchange="renderBI()" style="padding:8px; border-radius:4px; border:1px solid #ccc;">
+                <button onclick="clearAlerts()" style="background:#dc3545; color:white; border:none; padding:8px 12px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer;">🗑️ Dọn dẹp lỗi</button>
+            </div>
+            
+            <div style="background: #e2f0d9; border: 1px solid #c8e6c9; border-left: 5px solid #28a745; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
+                <h3 style="color: #2e7d32; font-size: 14px; margin-bottom: 5px;">📹 AI NHẮC NHỞ GIÁM SÁT CAMERA XE</h3>
+                <p style="font-size: 12px; color: #333; margin-bottom: 8px;">Dựa trên dữ liệu chấm điểm rủi ro bên dưới, AI kiến nghị kết nối Camera điện thoại trên xe để đối chiếu thực tế:</p>
+                <div id="aiCameraAdvice" style="font-size: 13px; font-weight: bold; color: #b71c1c; background: white; padding: 8px; border-radius: 4px;">Đang phân tích hệ thống...</div>
+                <button onclick="openCameraSimulator()" style="background: #2e7d32; color: white; border: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; margin-top: 10px;">🔍 Kết nối Camera Điện Thoại Xe</button>
+            </div>
+
+            <h3 style="color:#1a73e8; font-size:16px; margin-bottom:10px;">🤖 AI SCORING: ĐÁNH GIÁ NHÂN SỰ</h3>
+            <div class="table-responsive">
+                <table class="compact-table">
+                    <thead><tr><th>Xe</th><th>Lỗi Hủy Ảo</th><th>Lỗi Định Vị</th><th>Độ Rủi Ro</th><th>Đề Xuất</th></tr></thead>
+                    <tbody id="aiScoringBody"></tbody>
+                </table>
+            </div>
+
+            <div class="bi-card" style="margin-top: 15px;">
+                <h3 style="font-size:15px; color:#333;">📊 Tỷ lệ lấp đầy hôm nay (Max 24 giường)</h3>
+                <div id="loadStatusAll"></div>
+            </div>
+        </div>
+
+        <!-- TAB 5: CAMERA ĐIỆN THOẠI & BẢO DƯỠNG -->
+        <div id="tab-tracking" class="tab-content">
+            <h3 style="color:#1a73e8; font-size:16px; margin-bottom:10px;">📹 HỆ THỐNG CAMERA ĐIỆN THOẠI TRÊN XE</h3>
+            
+            <div style="background: #e8f0fe; border: 1px solid #1a73e8; padding: 12px; border-radius: 6px; margin-bottom: 10px; font-size: 13px;">
+                💡 <b>Tính năng:</b> Kết nối trực tiếp vào luồng video từ camera của điện thoại đang gắn trên xe (Cần trình duyệt cho phép quyền Camera).
+            </div>
+
+            <div class="video-container" id="tabVideoContainer">
+                <p id="tabVideoStatus">Đang chờ tín hiệu kết nối...</p>
+                <video id="tabLiveVideo" autoplay playsinline style="display:none;"></video>
+            </div>
+            <button onclick="requestCameraAccess('tabLiveVideo', 'tabVideoStatus')" style="background:#1a73e8; color:white; border:none; padding:10px; border-radius:4px; font-weight:bold; cursor:pointer; width:100%; margin-bottom:20px;">📡 KẾT NỐI CAMERA ĐIỆN THOẠI XE</button>
+
+            <h3 style="color:#1a73e8; font-size:16px; margin-bottom:10px; margin-top:15px;">🛠️ THEO DÕI ĐĂNG KIỂM & BẢO DƯỠNG XE</h3>
+            
+            <div id="trackingAlertBox" style="display: none; background: #fff3cd; border: 1px solid #ffeeba; border-left: 5px solid #ffc107; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
+                <h4 style="color: #856404; font-size: 14px; margin-bottom: 5px;">⚠️ CẢNH BÁO ĐĂNG KIỂM / BẢO DƯỠNG SẮP HẾT HẠN</h4>
+                <div id="trackingAlertList" style="font-size: 13px; color: #333; line-height: 1.5;"></div>
+            </div>
+
+            <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
+                <h4 style="font-size: 14px; color: #333; margin-bottom: 10px;">➕ Thêm Hồ Sơ Kỹ Thuật / Đăng Kiểm</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Chọn Xe</label>
+                        <select id="trackBus" style="font-weight: bold; color: #1a73e8;">
+                            <option value="77H-093.15">Xe 01 (Biển 77H-093.15)</option>
+                            <option value="77H-093.25">Xe 02 (Biển 77H-093.25)</option>
+                            <option value="77H-093.31">Xe 03 (Biển 77H-093.31)</option>
+                            <option value="77H-093.37">Xe 04 (Biển 77H-093.37)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Loại Hồ Sơ</label>
+                        <select id="trackType">
+                            <option value="Đăng kiểm">🚗 Đăng kiểm xe</option>
+                            <option value="Bảo hiểm">🛡️ Bảo hiểm TNDS/Vật chất</option>
+                            <option value="Bảo dưỡng">🔧 Bảo dưỡng định kỳ</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Ngày Hết Hạn / Thực Hiện</label>
+                        <input type="date" id="trackExpiryDate">
+                    </div>
+                    <div class="form-group">
+                        <label>Chi Phí (VNĐ)</label>
+                        <input type="number" id="trackCost" placeholder="Nhập số tiền...">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 10px;">
+                    <label>Ghi chú chi tiết</label>
+                    <input type="text" id="trackNote" placeholder="Ví dụ: Trạm đăng kiểm Bình Định, Thay nhớt lốp...">
+                </div>
+                <button onclick="addTrackingRecord()" style="background:#28a745; color:white; border:none; padding:12px; border-radius:4px; font-weight:bold; cursor:pointer; width:100%; font-size:14px;">LƯU HỒ SƠ</button>
+            </div>
+
+            <h3 style="font-size:15px; margin-bottom:10px;">📋 DANH SÁCH THEO DÕI XE CỘ</h3>
+            <div class="table-responsive">
+                <table class="compact-table">
+                    <thead><tr><th>Xe</th><th>Loại</th><th>Hạn / Ngày</th><th>Chi phí</th><th>Ghi chú</th><th>Xóa</th></tr></thead>
+                    <tbody id="trackingTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- CỘT BÊN PHẢI: BẢN ĐỒ -->
+    <div class="map-container"><div id="map"></div></div>
+
+    <!-- MODAL MÔ PHỎNG CAMERA ĐIỆN THOẠI -->
+    <div id="cameraModal" class="modal">
+        <div class="modal-content" style="background:#222; color:#fff; border:2px solid #28a745;">
+            <span class="close-modal" onclick="closeCameraModal()" style="color:#fff;">✖</span>
+            <h3 style="color: #28a745; margin-bottom: 10px; font-size:16px;">📹 LIVE CAMERA ĐIỆN THOẠI XE</h3>
+            <div class="video-container" style="border-color:#444; height: 280px;">
+                <p id="modalVideoStatus">Đang thiết lập kết nối peer-to-peer...</p>
+                <video id="modalLiveVideo" autoplay playsinline style="display:none;"></video>
+            </div>
+            <button onclick="requestCameraAccess('modalLiveVideo', 'modalVideoStatus')" style="background:#28a745; color:white; border:none; padding:10px; border-radius:4px; font-weight:bold; cursor:pointer; width:100%; margin-top:5px;"> BẬT KẾT NỐI CAMERA</button>
+        </div>
+    </div>
+
+    <!-- MODAL VÉ ĐIỆN TỬ -->
+    <div id="qrModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal()">✖</span>
+            <h3 id="modalTitle" style="color: #1a73e8; margin-bottom: 10px;">VÉ XE ĐIỆN TỬ</h3>
+            <p id="modalInfo" style="font-size: 15px; margin-bottom: 15px; color: #555; line-height: 1.5;"></p>
+            <img id="qrImage" src="" alt="QR Code" style="width: 200px; height: 200px; border: 1px solid #ddd; padding: 5px; border-radius: 8px;">
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    
+    <script>
+        let map;
+
+        const DB = {
+            getTrips: () => JSON.parse(localStorage.getItem('trips')) || [],
+            saveTrips: (data) => localStorage.setItem('trips', JSON.stringify(data)),
+            getCustomers: () => JSON.parse(localStorage.getItem('customers')) || {},
+            saveCustomers: (data) => localStorage.setItem('customers', JSON.stringify(data)),
+            getExpenses: () => JSON.parse(localStorage.getItem('expenses')) || [],
+            saveExpenses: (data) => localStorage.setItem('expenses', JSON.stringify(data)),
+            getBusLocations: () => JSON.parse(localStorage.getItem('busLocations')) || {}, 
+            saveBusLocations: (data) => localStorage.setItem('busLocations', JSON.stringify(data)),
+            getAlerts: () => JSON.parse(localStorage.getItem('fraudAlerts')) || [],
+            saveAlerts: (data) => localStorage.setItem('fraudAlerts', JSON.stringify(data)),
+            getTracking: () => JSON.parse(localStorage.getItem('trackingData')) || [],
+            saveTracking: (data) => localStorage.setItem('trackingData', JSON.stringify(data))
+        };
+
+        let gpsWatchId = null;
+        let adminFilterStatus = 'All';
+        let currentVideoStream = null; 
+        
+        // BIẾN QUẢN LÝ BẢN ĐỒ VÀ XE
+        window.busMarkers = {};
+        let adminGpsInterval = null;
+
+        function checkLogin() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            
+            if(u === 'admin' && p === 'trang1986') { processLogin('admin', 'Chủ xe (Admin)'); }
+            else if(u === 'nhanvien' && p === 'cskhmaianh') { processLogin('staff', 'Nhân viên CSKH'); }
+            else if(u === 'taixe' && p === 'taixemaianh') {
+                document.getElementById('loginMain').style.display = 'none';
+                document.getElementById('loginDriverSelect').style.display = 'block';
+            }
+            else {
+                return alert("Sai tên đăng nhập hoặc mật khẩu!");
+            }
+        }
+
+        function confirmDriverBus() {
+            const selectedBus = document.getElementById('driverBusPicker').value;
+            sessionStorage.setItem('currentBus', selectedBus);
+            processLogin('driver', 'Tài xế (' + selectedBus + ')');
+        }
+
+        function processLogin(role, roleName) {
+            sessionStorage.setItem('userRole', role);
+            sessionStorage.setItem('userName', roleName);
+            applyPermissions();
+        }
+
+        function logout() {
+            if(gpsWatchId && navigator.geolocation) navigator.geolocation.clearWatch(gpsWatchId);
+            if(adminGpsInterval) clearInterval(adminGpsInterval);
+            stopCamera();
+            sessionStorage.clear();
+            location.reload(); 
+        }
+
+        // TÍNH NĂNG ĐỊNH VỊ THỰC TẾ QUA ĐIỆN THOẠI + HIỂN THỊ LÊN BẢN ĐỒ
+        window.startRealGPS = function(labelElement, busId) {
+            labelElement.classList.add('active');
+            labelElement.innerText = '📍 Kết nối GPS...';
+            
+            if(navigator.geolocation) {
+                gpsWatchId = navigator.geolocation.watchPosition((position) => {
+                    labelElement.innerText = '📍 Đang phát GPS điện thoại (' + busId + ')';
+                    labelElement.style.background = '#28a745';
+                    
+                    let lat = position.coords.latitude;
+                    let lng = position.coords.longitude;
+                    let speed = position.coords.speed || 0; // Tốc độ (m/s)
+
+                    // Lưu vào CSDL
+                    let locs = DB.getBusLocations();
+                    locs[busId] = { lat, lng, speed, time: new Date().toLocaleTimeString() };
+                    DB.saveBusLocations(locs);
+                    console.log(`Đã cập nhật vị trí ĐT xe ${busId}: Lat ${lat}, Lng ${lng}`);
+
+                    // HIỂN THỊ XE LÊN BẢN ĐỒ TỨC THÌ CHO TÀI XẾ
+                    if (map) {
+                        let latlng = [lat, lng];
+                        let speedKmH = Math.round(speed * 3.6);
+                        
+                        if (!window.busMarkers[busId]) {
+                            // Tạo marker lần đầu
+                            window.busMarkers[busId] = L.marker(latlng, {
+                                icon: L.divIcon({ html: '🚌', className: 'bus-icon', iconSize: [28, 28] })
+                            }).addTo(map).bindPopup(`<b>Xe: ${busId}</b><br>Tốc độ: ${speedKmH} km/h`);
+                            
+                            // Tự động zoom và chuyển góc nhìn về xe lần đầu tiên lấy được tọa độ
+                            map.setView(latlng, 15);
+                        } else {
+                            // Cập nhật vị trí marker
+                            window.busMarkers[busId].setLatLng(latlng);
+                            window.busMarkers[busId].getPopup().setContent(`<b>Xe: ${busId}</b><br>Tốc độ: ${speedKmH} km/h`);
+                        }
+                    }
+                    
+                }, (error) => {
+                    labelElement.innerText = '⚠️ Lỗi/Mất tín hiệu GPS!';
+                    labelElement.style.background = '#dc3545';
+                    console.warn(`Lỗi lấy GPS: ${error.message}`);
+                }, { 
+                    enableHighAccuracy: true, 
+                    maximumAge: 10000, 
+                    timeout: 5000 
+                });
+            } else {
+                alert("Trình duyệt/Thiết bị của bạn không hỗ trợ định vị GPS!");
+                labelElement.innerText = '❌ Không hỗ trợ GPS';
+                labelElement.style.background = '#dc3545';
+            }
+        }
+
+        function applyPermissions() {
+            const role = sessionStorage.getItem('userRole');
+            if(!role) return; 
+            
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('mainSystem').style.display = 'flex';
+            document.getElementById('userInfoText').innerText = `👤 ${sessionStorage.getItem('userName')}`;
+            
+            document.querySelectorAll('.tab-btn').forEach(btn => { btn.style.display = 'none'; btn.classList.remove('active'); });
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            const btn1 = document.getElementById('btnTab1'), btn2 = document.getElementById('btnTab2'), 
+                  btn3 = document.getElementById('btnTab3'), btn4 = document.getElementById('btnTab4'),
+                  btn5 = document.getElementById('btnTab5');
+            const gpsLabel = document.getElementById('gpsStatus');
+
+            if(role === 'admin') {
+                [btn1, btn2, btn3, btn4, btn5].forEach(b => b.style.display = 'block'); 
+                switchTab('tab-admin', btn2); 
+                gpsLabel.style.display = 'none';
+                
+                if(document.getElementById('btnCleanData')) document.getElementById('btnCleanData').style.display = 'inline-block';
+                
+                // ADMIN: Tự động tải vị trí tất cả các xe lên bản đồ mỗi 5 giây
+                if (!adminGpsInterval) {
+                    adminGpsInterval = setInterval(() => {
+                        if(!map) return;
+                        let locs = DB.getBusLocations();
+                        for (let bId in locs) {
+                            let data = locs[bId];
+                            let latlng = [data.lat, data.lng];
+                            let speedKmH = Math.round(data.speed * 3.6);
+                            
+                            if(!window.busMarkers[bId]) {
+                                window.busMarkers[bId] = L.marker(latlng, {
+                                    icon: L.divIcon({ html: '🚌', className: 'bus-icon', iconSize: [28, 28] })
+                                }).addTo(map).bindPopup(`<b>Xe: ${bId}</b><br>Tốc độ: ${speedKmH} km/h<br><small>Cập nhật: ${data.time}</small>`);
+                            } else {
+                                window.busMarkers[bId].setLatLng(latlng);
+                                window.busMarkers[bId].getPopup().setContent(`<b>Xe: ${bId}</b><br>Tốc độ: ${speedKmH} km/h<br><small>Cập nhật: ${data.time}</small>`);
+                            }
+                        }
+                    }, 5000);
+                }
+            } 
+            else if(role === 'staff') {
+                [btn1, btn2].forEach(b => b.style.display = 'block');
+                switchTab('tab-add', btn1); updateRouteDefault(); gpsLabel.style.display = 'none';
+                
+                if(document.getElementById('btnCleanData')) document.getElementById('btnCleanData').style.display = 'none';
+            }
+            else if(role === 'driver') {
+                btn3.style.display = 'block'; switchTab('tab-driver', btn3);
+                const currentBus = sessionStorage.getItem('currentBus');
+                document.getElementById('driverBusName').innerText = "🚍 Đang lái: " + currentBus;
+                gpsLabel.style.display = 'inline-block'; 
+                
+                // Khởi động GPS điện thoại cho tài xế và vẽ xe
+                startRealGPS(gpsLabel, currentBus);
+            }
+            
+            renderSeats(); renderAdminList(); renderDriverList(); renderBI(); renderTracking();
+            checkFraudAlertsUI(); renderAIScoring();
+        }
+
+        window.onload = function() { 
+            map = L.map('map').setView([14.0583, 108.2772], 6); 
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+            if(sessionStorage.getItem('userRole')) applyPermissions(); 
+        }
+
+        const formatMoney = (amount) => new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
+        const today = new Date().toISOString().split('T')[0];
+        ['date','filterDateAdmin','filterDateDriver','filterDateBI','trackExpiryDate'].forEach(id => {
+            if(document.getElementById(id)) document.getElementById(id).value = today;
+        });
+
+        function switchTab(tabId, element) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            element.classList.add('active'); document.getElementById(tabId).classList.add('active');
+            if(map) map.invalidateSize();
+            // Dừng camera nếu chuyển khỏi tab theo dõi xe để tiết kiệm pin
+            if(tabId !== 'tab-tracking') stopCamera(); 
+        }
+
+        // --- CÁC HÀM XỬ LÝ ĐẶT VÉ (TAB 1) ---
+        window.updateRouteDefault = function() {
+            const route = document.getElementById('routeSelect').value;
+            if(route === 'T-B') { document.getElementById('pickup').value = 'Tam Quan, Bình Định'; document.getElementById('dropoff').value = 'Bảo Lộc, Lâm Đồng'; } 
+            else { document.getElementById('pickup').value = 'Bảo Lộc, Lâm Đồng'; document.getElementById('dropoff').value = 'Tam Quan, Bình Định'; }
+        }
+
+        function toggleType() {
+            let type = document.getElementById('type').value;
+            document.getElementById('seatContainer').style.display = (type === 'Khách') ? 'block' : 'none';
+            document.getElementById('seatInput').value = (type === 'Khách') ? '' : 'HÀNG HÓA';
+            if(type === 'Khách') renderSeats();
+        }
+
+        let selectedSeat = "";
+        const seatNames = ['A1','A2','B1','B2','A3','A4','B3','B4','A5','A6','B5','B6','A7','A8','B7','B8','A9','A10','B9','B10','A11','A12','B11','B12'];
+
+        function syncPrice() {
+            document.getElementById('finalPrice').value = document.getElementById('price').value;
+        }
+
+        function renderSeats() {
+            if (document.getElementById('type').value === 'Hàng') return;
+            const date = document.getElementById('date').value; const busId = document.getElementById('busSelect').value;
+            let booked = DB.getTrips().filter(t => t.date === date && t.busId === busId && t.status !== 'Hủy' && !t.status.includes('Gian lận') && t.type === 'Khách').map(t => t.seat);
+
+            let mapDiv = document.getElementById('seatMap'); mapDiv.innerHTML = "";
+            seatNames.forEach(seat => {
+                let div = document.createElement('div');
+                if (booked.includes(seat)) { div.className = 'seat-box booked'; div.innerHTML = `❌ ${seat}`; } 
+                else { div.className = `seat-box ${selectedSeat === seat ? 'selected' : ''}`; div.innerHTML = `🛏️ ${seat}`; div.onclick = () => { selectedSeat = seat; document.getElementById('seatInput').value = seat; renderSeats(); }; }
+                mapDiv.appendChild(div);
+            });
+        }
+
+        document.getElementById('tripForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const isCus = document.getElementById('type').value === 'Khách';
+            if (isCus && !selectedSeat) return alert("Vui lòng chọn 1 phòng!");
+            
+            const phone = document.getElementById('phone').value;
+            const tripData = {
+                id: Date.now(), date: document.getElementById('date').value, busId: document.getElementById('busSelect').value,
+                route: document.getElementById('routeSelect').value, type: isCus ? 'Khách' : 'Hàng', name: document.getElementById('name').value, phone: phone,
+                seat: isCus ? selectedSeat : 'Hàng', pickup: document.getElementById('pickup').value, dropoff: document.getElementById('dropoff').value,
+                price: parseInt(document.getElementById('finalPrice').value), paymentStatus: document.getElementById('paymentStatus').value,
+                driverStatus: 'Chờ đón', status: 'Bình thường'
+            };
+
+            let trips = DB.getTrips(); trips.push(tripData); DB.saveTrips(trips);
+            
+            document.getElementById('name').value = ''; document.getElementById('phone').value = ''; document.getElementById('price').value = ''; document.getElementById('finalPrice').value = '';
+            selectedSeat = ""; document.getElementById('seatInput').value = ""; 
+            if(isCus) renderSeats(); renderAdminList(); renderDriverList(); renderBI();
+            alert("Lưu thành công!");
+        });
+
+        let routeControl = null;
+        window.findRouteOnMap = function() {
+            const pickupText = document.getElementById('pickup').value.trim();
+            const dropoffText = document.getElementById('dropoff').value.trim();
+            if(!pickupText || !dropoffText) return alert("Vui lòng nhập đầy đủ nơi đón và nơi trả!");
+
+            const btn = document.getElementById('btnFindRoute');
+            btn.innerText = '⏳ Đang tải dữ liệu bản đồ...';
+
+            Promise.all([
+                fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(pickupText)}`).then(res => res.json()),
+                fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(dropoffText)}`).then(res => res.json())
+            ]).then(([startRes, endRes]) => {
+                btn.innerText = '📍 DÒ ĐƯỜNG TRÊN BẢN ĐỒ';
+
+                if(startRes.length === 0 || endRes.length === 0) {
+                    alert("Không tìm thấy tọa độ chính xác của điểm đón hoặc điểm trả! Vui lòng điền chi tiết hơn.");
+                    return;
+                }
+
+                const startLatLng = L.latLng(parseFloat(startRes[0].lat), parseFloat(startRes[0].lon));
+                const endLatLng = L.latLng(parseFloat(endRes[0].lat), parseFloat(endRes[0].lon));
+
+                if(routeControl) { map.removeControl(routeControl); }
+
+                routeControl = L.Routing.control({
+                    waypoints: [startLatLng, endLatLng],
+                    routeWhileDragging: false,
+                    addWaypoints: false,
+                    show: false,
+                    lineOptions: { styles: [{ color: '#1a73e8', opacity: 0.9, weight: 6 }] },
+                    createMarker: function(i, wp, nWps) {
+                        return L.marker(wp.latLng, {
+                            icon: L.divIcon({ html: i === 0 ? '🟢' : '🔴', className: 'bus-icon', iconSize: [24,24] })
+                        });
+                    }
+                }).addTo(map);
+
+                map.flyToBounds(L.latLngBounds([startLatLng, endLatLng]), { padding: [50, 50], duration: 1.5 });
+                const distanceKm = startLatLng.distanceTo(endLatLng) / 1000;
+                alert(`🗺️ Đã hiển thị lộ trình trên bản đồ!\n📏 Khoảng cách ước tính: ${Math.round(distanceKm)} km.`);
+                
+            }).catch(err => {
+                btn.innerText = '📍 DÒ ĐƯỜNG TRÊN BẢN ĐỒ';
+                console.error(err);
+                alert("Lỗi khi kết nối đến dịch vụ bản đồ.");
+            });
+        }
+
+        // --- CÁC HÀM XỬ LÝ ADMIN & TÀI XẾ (TAB 2, TAB 3) ---
+        window.driverCancelTrip = function(id) {
+            if(!confirm("Bạn có chắc chắn muốn báo hủy vé này? Đơn sẽ được lưu lại để chờ Admin xem xét.")) return;
+            let trips = DB.getTrips(); 
+            let trip = trips.find(t => t.id === id);
+            trip.status = 'Tài xế báo hủy';
+            trip.driverStatus = 'Đã hủy';
+            DB.saveTrips(trips);
+            renderDriverList(); renderAdminList();
+            alert("Đã ghi nhận báo hủy. Đơn vẫn hiển thị trong hệ thống chờ Admin xử lý!");
+        }
+
+        window.simulateGPSFraud = function() {
+            let alerts = DB.getAlerts();
+            alerts.push({ id: Date.now(), type: 'GPS', busId: '77H-093.15', msg: `Mất tín hiệu định vị điện thoại hoặc xe dừng đỗ bất thường.`, time: new Date().toLocaleTimeString() });
+            DB.saveAlerts(alerts);
+            checkFraudAlertsUI(); renderAIScoring();
+            alert("Đã phát sinh cảnh báo lỗi định vị điện thoại!");
+        }
+
+        function checkFraudAlertsUI() {
+            let alerts = DB.getAlerts();
+            let panel = document.getElementById('alertPanel');
+            let list = document.getElementById('alertList');
+            
+            if(alerts.length > 0 && sessionStorage.getItem('userRole') === 'admin') {
+                panel.style.display = 'block';
+                list.innerHTML = alerts.map(a => `<div class="alert-item"><span>[${a.time}] <b>${a.busId}</b>: ${a.msg}</span></div>`).join('');
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        window.clearAlerts = function() { 
+            DB.saveAlerts([]); 
+            checkFraudAlertsUI(); 
+            renderAIScoring();
+            alert("Đã dọn dẹp sạch sẽ lịch sử cảnh báo lỗi!");
+        }
+
+        window.showQR = function(id) {
+            let trips = DB.getTrips();
+            let trip = trips.find(x => x.id === id);
+            if(!trip) return;
+            
+            document.getElementById('modalTitle').innerText = `VÉ XE - CHỖ: ${trip.seat}`;
+            document.getElementById('modalInfo').innerHTML = `
+                <b>Khách hàng:</b> ${trip.name}<br>
+                <b>Điện thoại:</b> ${trip.phone}<br>
+                <b>Biển số xe:</b> ${trip.busId}<br>
+                <b>Nơi đón:</b> ${trip.pickup}<br>
+                <b>Thực thu:</b> <span style="color:#28a745; font-weight:bold">${formatMoney(trip.price)}</span>
+            `;
+            document.getElementById('qrImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=VeXe_${trip.id}_${trip.phone}`;
+            document.getElementById('qrModal').style.display = 'flex';
+        }
+        
+        window.closeModal = function() { document.getElementById('qrModal').style.display = 'none'; }
+
+        window.confirmCleanData = function() {
+            if(confirm("⚠️ LƯU Ý: Bạn đã xuất file Excel của tuần này chưa?\n\nHành động này sẽ XÓA TOÀN BỘ dữ liệu các chuyến xe của ngày cũ (chỉ giữ lại ngày hôm nay) để hệ thống chạy mượt hơn trên điện thoại.\n\nBạn có chắc chắn muốn dọn dẹp?")) {
+                let trips = DB.getTrips();
+                let activeTrips = trips.filter(t => t.date === today); 
+                DB.saveTrips(activeTrips);
+                
+                alert("Đã dọn dẹp dữ liệu cũ thành công! Hệ thống giờ đã nhẹ nhàng hơn.");
+                renderAdminList(); 
+                renderDriverList();
+                renderBI();
+            }
+        }
+
+        window.changeBus = function(id) {
+            let trips = DB.getTrips();
+            let t = trips.find(x => x.id === id);
+            let targetBus = prompt("Chuyển vé này sang xe (Nhập biển số: 77H-093.15, 77H-093.25, 77H-093.31, 77H-093.37):", t.busId);
+            if(targetBus && ['77H-093.15', '77H-093.25', '77H-093.31', '77H-093.37'].includes(targetBus)) {
+                t.busId = targetBus;
+                DB.saveTrips(trips);
+                renderAdminList(); renderSeats(); renderDriverList(); renderBI();
+                alert("Đã chuyển xe thành công!");
+            } else if(targetBus) {
+                alert("Biển số xe không hợp lệ! Vui lòng nhập đúng định dạng hệ thống (Ví dụ: 77H-093.15)");
+            }
+        }
+
+        window.setAdminFilter = function(status) {
+            adminFilterStatus = status;
+            renderAdminList();
+        }
+
+        window.exportToExcel = function() {
+            const fDate = document.getElementById('filterDateAdmin').value;
+            let trips = DB.getTrips().filter(t => t.date === fDate);
+            
+            if(trips.length === 0) {
+                alert("Không có dữ liệu hành khách trong ngày này để xuất Excel.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+            csvContent += "Chỗ ngồi,Khách hàng,Số điện thoại,Loại hàng,Xe,Nơi đón,Nơi trả,Giá vé,Thanh toán,Trạng thái\n";
+            
+            trips.forEach(t => {
+                let row = `"${t.seat}","${t.name}","${t.phone}","${t.type}","${t.busId}","${t.pickup}","${t.dropoff}","${t.price}","${t.paymentStatus}","${t.status} (${t.driverStatus})"`;
+                csvContent += row + "\n";
+            });
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `DanhSachHanhKhach_${fDate}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function renderAdminList() {
+            const fDate = document.getElementById('filterDateAdmin').value;
+            const fBus = document.getElementById('filterBusAdmin').value; 
+            const searchKey = document.getElementById('searchAdmin').value.toLowerCase().trim();
+            const role = sessionStorage.getItem('userRole');
+
+            let allTripsForDay = DB.getTrips().filter(t => t.date === fDate);
+            
+            let countBoarded = allTripsForDay.filter(t => t.driverStatus === 'Đã lên xe' || t.driverStatus === 'Đã xuống').length;
+            let countWaiting = allTripsForDay.filter(t => t.driverStatus === 'Chờ đón' && t.status !== 'Hủy' && !t.status.includes('hủy') && !t.status.includes('Gian lận')).length;
+            let countCancelled = allTripsForDay.filter(t => t.status === 'Hủy' || t.status.includes('hủy') || t.status.includes('Gian lận')).length;
+            let totalCount = allTripsForDay.length;
+
+            document.getElementById('adminMiniDash').innerHTML = `
+                <div class="mini-dash-card" style="border-left: 4px solid #28a745; cursor:pointer; background:${adminFilterStatus==='DaDon'?'#e8f5e9':'white'};" onclick="setAdminFilter('DaDon')"><span>🟢 Đã đón</span><b style="color:#28a745;">${countBoarded} khách</b></div>
+                <div class="mini-dash-card" style="border-left: 4px solid #ffc107; cursor:pointer; background:${adminFilterStatus==='ChoDon'?'#fff8e1':'white'};" onclick="setAdminFilter('ChoDon')"><span>🟡 Chờ đón</span><b style="color:#ffc107;">${countWaiting} khách</b></div>
+                <div class="mini-dash-card" style="border-left: 4px solid #dc3545; cursor:pointer; background:${adminFilterStatus==='Huy'?'#ffebee':'white'};" onclick="setAdminFilter('Huy')"><span>🔴 Hủy / Lỗi</span><b style="color:#dc3545;">${countCancelled} đơn</b></div>
+                <div class="mini-dash-card" style="border-left: 4px solid #1a73e8; cursor:pointer; background:${adminFilterStatus==='All'?'#e8f0fe':'white'};" onclick="setAdminFilter('All')"><span>📋 Tất cả</span><b style="color:#1a73e8;">${totalCount} đơn</b></div>
+            `;
+
+            let trips = allTripsForDay;
+            if(fBus !== 'All') trips = trips.filter(t => t.busId === fBus);
+            
+            if(adminFilterStatus === 'DaDon') { trips = trips.filter(t => t.driverStatus === 'Đã lên xe' || t.driverStatus === 'Đã xuống'); } 
+            else if(adminFilterStatus === 'ChoDon') { trips = trips.filter(t => t.driverStatus === 'Chờ đón' && t.status !== 'Hủy' && !t.status.includes('hủy') && !t.status.includes('Gian lận')); } 
+            else if(adminFilterStatus === 'Huy') { trips = trips.filter(t => t.status === 'Hủy' || t.status.includes('hủy') || t.status.includes('Gian lận')); }
+
+            if(searchKey !== '') { trips = trips.filter(t => t.name.toLowerCase().includes(searchKey) || t.phone.includes(searchKey)); }
+
+            document.getElementById('adminTableBody').innerHTML = trips.map(t => {
+                let actionBtn = '';
+                let isCancelledOrFraud = t.status === 'Hủy' || t.status.includes('hủy') || t.status.includes('Gian lận');
+
+                if (isCancelledOrFraud) {
+                    actionBtn = `<button onclick="deleteTripPermanently(${t.id})" style="background:#6c757d; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;" title="Xóa vĩnh viễn khỏi hệ thống">🗑️ Xóa vĩnh viễn</button>`;
+                } else if (t.driverStatus === 'Đã lên xe' || t.driverStatus === 'Đã xuống') {
+                    if (role === 'admin') {
+                        actionBtn = `
+                            <button onclick="showQR(${t.id})" style="background:#007bff; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🎫 Xem Vé</button>
+                            <button onclick="cancelTrip(${t.id})" style="background:#dc3545; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">❌ Hủy</button>
+                            <button onclick="changeBus(${t.id})" style="background:#ff9800; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🚌 Đổi xe</button>
+                        `;
+                    } else {
+                        actionBtn = `<button onclick="showQR(${t.id})" style="background:#007bff; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🎫 Xem Vé</button>
+                                     <span style="font-size:11px; color:#888; display:block; margin-top:5px; text-align:center;">Khóa (Đã lên xe)</span>`;
+                    }
+                } else {
+                    actionBtn = `
+                        <button onclick="showQR(${t.id})" style="background:#007bff; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🎫 Xem Vé</button>
+                        <button onclick="cancelTrip(${t.id})" style="background:#dc3545; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">❌ Hủy Vé</button>
+                        <button onclick="changeBus(${t.id})" style="background:#ff9800; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🚌 Đổi xe</button>
+                    `;
+                }
+
+                let badgeColor = '#28a745';
+                if(t.paymentStatus === 'Chưa thu') badgeColor = '#dc3545';
+                else if(t.paymentStatus === 'Đã cọc') badgeColor = '#ff9800';
+
+                let rowBg = '';
+                if(t.status.includes('Gian lận')) rowBg = 'background:#f8d7da;';
+                else if(isCancelledOrFraud) rowBg = 'background:#fff3cd;';
+
+                return `
+                <tr style="${rowBg}">
+                    <td><b>${t.seat}</b><br><small style="color:#1a73e8">${t.busId}</small></td>
+                    <td><b>${t.name}</b><br>${t.phone}</td>
+                    <td style="text-align:left; font-size:11px;">
+                        🟢 Đón: <b>${t.pickup}</b><br>
+                        🔴 Trả: <b>${t.dropoff}</b><br>
+                        <small style="color:#555;">Trạng thái: <b>${t.status} (${t.driverStatus})</b></small>
+                    </td>
+                    <td>
+                        <span class="badge" style="background:${badgeColor}">${t.paymentStatus}</span><br>
+                        ${actionBtn}
+                    </td>
+                </tr>`;
+            }).join('') || `<tr><td colspan="4" style="color:#777; padding:15px;">Không tìm thấy hành khách phù hợp.</td></tr>`;
+        }
+        
+        function cancelTrip(id) { 
+            let trips = DB.getTrips(); 
+            let t = trips.find(x => x.id === id);
+            t.status = 'Hủy'; 
+            t.driverStatus = 'Đã hủy';
+            DB.saveTrips(trips); 
+            renderAdminList(); renderSeats(); renderDriverList(); renderBI();
+        }
+
+        function deleteTripPermanently(id) {
+            if(confirm("Bạn có chắc chắn muốn xóa vĩnh viễn đơn này khỏi cơ sở dữ liệu không?")) {
+                let trips = DB.getTrips().filter(x => x.id !== id);
+                DB.saveTrips(trips);
+                renderAdminList(); renderSeats(); renderDriverList(); renderBI();
+            }
+        }
+
+        function renderDriverList() {
+            const fDate = document.getElementById('filterDateDriver').value;
+            const role = sessionStorage.getItem('userRole');
+            const currentBus = sessionStorage.getItem('currentBus');
+            
+            let trips = DB.getTrips().filter(t => t.date === fDate && t.driverStatus !== 'Đã xuống' && t.status !== 'Hủy' && !t.status.includes('hủy') && !t.status.includes('Gian lận')); 
+            if(role === 'driver' && currentBus) trips = trips.filter(t => t.busId === currentBus);
+
+            let groups = {}; trips.forEach(t => { if(!groups[t.pickup]) groups[t.pickup] = []; groups[t.pickup].push(t); });
+            let html = "";
+            for (let loc in groups) {
+                html += `<div style="background:#343a40; color:white; padding:10px; font-weight:bold; border-radius:5px; margin-top:15px; font-size:14px;">📍 ĐIỂM ĐÓN: ${loc}</div>`;
+                groups[loc].forEach(t => {
+                    let isBoarded = t.driverStatus === 'Đã lên xe';
+                    html += `<div class="driver-card ${isBoarded ? 'da-don' : ''}">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                                <h3 style="margin:0;">${t.seat} - ${t.name}</h3>
+                                <a href="tel:${t.phone}" style="font-size:13px; background:green; color:white; padding:6px 10px; border-radius:10px; text-decoration:none;">Gọi Điện</a>
+                            </div>
+                            <p style="font-size:13px; margin-bottom:5px;">Đón: ${t.pickup} <br> Trả: ${t.dropoff}</p>
+                            <p style="font-size:14px; color: ${t.paymentStatus==='Chưa thu' ? 'red' : 'green'}; font-weight:bold;">Thu tiền: ${t.paymentStatus}</p>
+                            
+                            <div style="display:flex; gap:8px; margin-top:12px;">
+                                <button class="btn-driver" style="flex:2; background:${isBoarded ? '#28a745' : '#ffc107'}; color:${isBoarded ? 'white' : 'black'};" onclick="updateDriverStatus(${t.id}, '${isBoarded ? 'Đã xuống' : 'Đã lên xe'}')">${isBoarded ? '🏁 ĐÃ TRẢ KHÁCH' : '📍 ĐÃ ĐÓN LÊN XE'}</button>
+                                <button class="btn-driver" style="flex:1; background:#dc3545; color:white;" onclick="driverCancelTrip(${t.id})">❌ HỦY VÉ</button>
+                            </div>
+                        </div>`;
+                });
+            }
+            document.getElementById('driverList').innerHTML = html || "<p align='center' style='padding:20px; color:#777;'>Chưa có khách chờ.</p>";
+
+            let phoiTrips = DB.getTrips().filter(t => t.date === fDate && (t.driverStatus === 'Đã lên xe' || t.driverStatus === 'Đã xuống') && t.status !== 'Hủy');
+            if(role === 'driver') phoiTrips = phoiTrips.filter(t => t.busId === currentBus);
+            
+            document.getElementById('phoiTotalCus').innerText = phoiTrips.length + " người";
+            document.getElementById('phoiCash').innerText = formatMoney(phoiTrips.reduce((sum, t) => sum + ((t.paymentStatus === 'Chưa thu' || t.paymentStatus === 'Đã nhận (Lơ thu)') ? t.price : 0), 0));
+        }
+
+        window.updateDriverStatus = function(id, status) { 
+            let trips = DB.getTrips(); let trip = trips.find(t => t.id === id);
+            if(trip.status.includes('Gian lận')) return alert("Vé này đang bị phong tỏa do tình nghi gian lận!");
+            
+            trip.driverStatus = status; 
+            if (status === 'Đã xuống' && trip.paymentStatus === 'Chưa thu') { trip.paymentStatus = 'Đã nhận (Lơ thu)'; }
+            
+            DB.saveTrips(trips); renderDriverList(); renderAdminList();
+        }
+        
+        window.chotPhoiXe = function() { 
+            const chiPhi = parseInt(document.getElementById('phoiChiPhi').value) || 0;
+            const note = document.getElementById('phoiNote').value || 'Chi phí dọc đường';
+            const fDate = document.getElementById('filterDateDriver').value;
+            const currentBus = sessionStorage.getItem('currentBus') || document.getElementById('busSelect').value;
+
+            if(chiPhi > 0) {
+                let expenses = DB.getExpenses();
+                expenses.push({ id: Date.now(), date: fDate, busId: currentBus, amount: chiPhi, note: `[Lơ xe] ` + note });
+                DB.saveExpenses(expenses);
+            }
+            alert(`Đã gửi phơi xe thành công! Khoản chi ${formatMoney(chiPhi)} của ${currentBus} đã được ghi nhận.`);
+            document.getElementById('phoiChiPhi').value = ""; document.getElementById('phoiNote').value = "";
+        }
+
+        // --- TAB 4: AI & BÁO CÁO ---
+        function renderBI() {
+            let fDate = document.getElementById('filterDateBI').value;
+            let trips = DB.getTrips().filter(t => t.date === fDate && t.type === 'Khách' && t.status !== 'Hủy');
+            let html = "";
+            ['77H-093.15', '77H-093.25', '77H-093.31', '77H-093.37'].forEach((bus, index) => {
+                let count = trips.filter(t => t.busId === bus).length; let percent = (count/24)*100; 
+                let color = percent > 80 ? '#28a745' : (percent > 40 ? '#ffc107' : '#dc3545');
+                html += `<div style="margin-top:12px;"><p style="font-size:13px; margin-bottom:4px;"><b>Xe 0${index+1} (${bus})</b>: ${count}/24 giường</p><div class="progress-bar" style="background:#e9ecef; border-radius:4px; overflow:hidden;"><div class="progress-fill" style="width:${percent}%; background:${color}; height:12px;"></div></div></div>`;
+            });
+            document.getElementById('loadStatusAll').innerHTML = html;
+        }
+
+        function renderAIScoring() {
+            const buses = ['77H-093.15', '77H-093.25', '77H-093.31', '77H-093.37'];
+            let alerts = DB.getAlerts();
+            let html = '';
+            let highestRiskBus = 'Không có';
+            let maxRisk = -1;
+
+            buses.forEach(bus => {
+                let fakeCancel = alerts.filter(a => a.busId === bus && a.type === 'Hủy Ảo').length;
+                let gpsError = alerts.filter(a => a.busId === bus && a.type === 'GPS').length;
+                
+                let riskPercent = Math.min((fakeCancel * 40) + (gpsError * 15), 100);
+                if(riskPercent > maxRisk) { maxRisk = riskPercent; highestRiskBus = bus; }
+
+                let color = riskPercent > 60 ? '#dc3545' : (riskPercent > 20 ? '#ffc107' : '#28a745');
+                let advice = riskPercent > 60 ? 'Cần đối chất Lơ xe' : (riskPercent > 20 ? 'Theo dõi thêm' : 'Tốt - An toàn');
+
+                html += `<tr>
+                    <td style="font-size:12px;"><b>${bus}</b></td>
+                    <td style="color:#dc3545; font-weight:bold;">${fakeCancel}</td>
+                    <td style="color:#ff9800; font-weight:bold;">${gpsError}</td>
+                    <td><span style="background:${color}; color:white; padding:4px 8px; border-radius:10px; font-weight:bold; font-size:11px;">${riskPercent}%</span></td>
+                    <td style="font-size:11px; text-align:left; color:${color};"><b>${advice}</b></td>
+                </tr>`;
+            });
+            document.getElementById('aiScoringBody').innerHTML = html;
+
+            let adviceBox = document.getElementById('aiCameraAdvice');
+            if (maxRisk > 0) {
+                adviceBox.innerHTML = `⚠️ Xe <b>${highestRiskBus}</b> đang có mức rủi ro ${maxRisk}%. Đề nghị mở kết nối camera điện thoại để kiểm tra thực tế.`;
+            } else {
+                adviceBox.innerHTML = `✅ Các xe vận hành bình thường. Không phát hiện rủi ro, hệ thống định vị ổn định.`;
+            }
+        }
+
+        // --- TAB 5: XỬ LÝ CAMERA ĐIỆN THOẠI & BẢO DƯỠNG ---
+        
+        window.openCameraSimulator = function() { 
+            document.getElementById('cameraModal').style.display = 'flex'; 
+        }
+        
+        window.closeCameraModal = function() { 
+            stopCamera();
+            document.getElementById('cameraModal').style.display = 'none'; 
+            document.getElementById('modalVideoStatus').style.display = 'block';
+            document.getElementById('modalLiveVideo').style.display = 'none';
+        }
+
+        // Hàm xin quyền và bật Camera sau của thiết bị
+        window.requestCameraAccess = function(videoId, statusId) {
+            const videoElem = document.getElementById(videoId);
+            const statusElem = document.getElementById(statusId);
+            
+            statusElem.innerText = 'Đang xin quyền truy cập Camera...';
+            
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                // Ưu tiên sử dụng camera sau (environment)
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                .then(function(stream) {
+                    currentVideoStream = stream;
+                    videoElem.srcObject = stream;
+                    videoElem.style.display = 'block';
+                    statusElem.style.display = 'none';
+                    videoElem.play();
+                })
+                .catch(function(err) {
+                    statusElem.innerHTML = `<span style="color:#dc3545;">Lỗi kết nối Camera: ${err.message}.<br>Vui lòng cấp quyền Camera cho trình duyệt hoặc thử thiết bị khác.</span>`;
+                });
+            } else {
+                statusElem.innerHTML = '<span style="color:#dc3545;">Trình duyệt của bạn không hỗ trợ mở Camera!</span>';
+            }
+        }
+
+        function stopCamera() {
+            if (currentVideoStream) {
+                currentVideoStream.getTracks().forEach(track => track.stop());
+                currentVideoStream = null;
+            }
+        }
+
+        // Thêm hồ sơ bảo dưỡng
+        window.addTrackingRecord = function() {
+            const busId = document.getElementById('trackBus').value;
+            const type = document.getElementById('trackType').value;
+            const expiryDate = document.getElementById('trackExpiryDate').value;
+            const cost = parseInt(document.getElementById('trackCost').value) || 0;
+            const note = document.getElementById('trackNote').value || 'Không có ghi chú';
+
+            if(!expiryDate) return alert("Vui lòng chọn ngày hết hạn / thực hiện!");
+
+            let trackingList = DB.getTracking();
+            trackingList.push({
+                id: Date.now(),
+                busId,
+                type,
+                expiryDate,
+                cost,
+                note
+            });
+            DB.saveTracking(trackingList);
+            document.getElementById('trackCost').value = '';
+            document.getElementById('trackNote').value = '';
+            renderTracking();
+            alert("Đã lưu hồ sơ theo dõi thành công!");
+        }
+
+        window.deleteTrackingRecord = function(id) {
+            if(confirm("Bạn có muốn xóa hồ sơ này không?")) {
+                let trackingList = DB.getTracking().filter(t => t.id !== id);
+                DB.saveTracking(trackingList);
+                renderTracking();
+            }
+        }
+
+        function renderTracking() {
+            if(!document.getElementById('trackingTableBody')) return;
+            let trackingList = DB.getTracking();
+            let todayDate = new Date();
+            todayDate.setHours(0,0,0,0);
+
+            let alertHtmls = [];
+
+            let html = trackingList.map(t => {
+                let expDate = new Date(t.expiryDate);
+                expDate.setHours(0,0,0,0);
+                let diffTime = expDate - todayDate;
+                let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                let badgeBg = '#1a73e8';
+                if(t.type === 'Bảo hiểm') badgeBg = '#ff9800';
+                else if(t.type === 'Bảo dưỡng') badgeBg = '#28a745';
+
+                let statusText = `<b style="color:#28a745;">Còn ${diffDays} ngày</b>`;
+
+                if(diffDays < 0) {
+                    statusText = `<b style="color:#dc3545;">⚠️ ĐÃ QUÁ HẠN (${Math.abs(diffDays)} ngày)!</b>`;
+                    alertHtmls.push(`🔴 Xe <b>${t.busId}</b> đã quá hạn <b>${t.type}</b> (Hạn: ${t.expiryDate})`);
+                } else if(diffDays <= 7) {
+                    statusText = `<b style="color:#856404;">⚠️ Sắp hết hạn trong ${diffDays} ngày!</b>`;
+                    alertHtmls.push(`🟡 Xe <b>${t.busId}</b> sắp đến hạn <b>${t.type}</b> vào ngày ${t.expiryDate}`);
+                }
+
+                return `
+                <tr>
+                    <td><b>${t.busId}</b></td>
+                    <td><span class="badge" style="background:${badgeBg}">${t.type}</span></td>
+                    <td style="font-size:12px;"><b>${t.expiryDate}</b><br>${statusText}</td>
+                    <td style="color:#dc3545; font-weight:bold;">${formatMoney(t.cost)}</td>
+                    <td style="font-size:12px; text-align:left;">${t.note}</td>
+                    <td><button onclick="deleteTrackingRecord(${t.id})" style="background:#dc3545; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; cursor:pointer;">Xóa</button></td>
+                </tr>`;
+            }).join('');
+
+            document.getElementById('trackingTableBody').innerHTML = html || '<tr><td colspan="6" style="color:#777; padding:15px;">Chưa có dữ liệu theo dõi.</td></tr>';
+
+            const alertBox = document.getElementById('trackingAlertBox');
+            const alertList = document.getElementById('trackingAlertList');
+            if(alertHtmls.length > 0) {
+                alertBox.style.display = 'block';
+                alertList.innerHTML = alertHtmls.join('<br>');
+            } else {
+                alertBox.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
