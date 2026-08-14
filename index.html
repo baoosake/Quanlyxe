@@ -73,6 +73,14 @@
         .phoi-xe-box { background: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 8px; margin-top: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);}
         
         .bus-icon { font-size: 16px; background: white; border-radius: 50%; display:flex; justify-content:center; align-items:center; box-shadow: 0 0 8px rgba(0,0,0,0.6); border: 2px solid #1a73e8;}
+        .bus-icon.offline { border-color: #9e9e9e; opacity: 0.55; filter: grayscale(100%); }
+
+        .vehicle-status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 15px; }
+        .vehicle-status-card { background: white; border: 1px solid #ddd; border-left: 5px solid #9e9e9e; border-radius: 8px; padding: 10px; font-size: 12px; }
+        .vehicle-status-card.online { border-left-color: #28a745; }
+        .vehicle-status-card .vs-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#9e9e9e; margin-right:5px; }
+        .vehicle-status-card.online .vs-dot { background:#28a745; box-shadow: 0 0 4px #28a745; }
+        .vehicle-status-card button { margin-top: 6px; width: 100%; padding: 6px; border: none; border-radius: 4px; background: #1a73e8; color: white; font-size: 11px; font-weight: bold; cursor: pointer; }
         
         .mini-dash-card { flex: 1; background: white; padding: 10px 5px; border-radius: 6px; border: 1px solid #ddd; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: 0.2s; min-width: 70px; }
         .mini-dash-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -130,6 +138,7 @@
             <span id="userInfoText">Đang đăng nhập...</span>
             <div style="display: flex; align-items: center;">
                 <span id="networkStatus" class="network-status">🟢 Cloud</span>
+                <span id="syncStatus" class="network-status" style="background:#6c757d; margin-left:5px;">⏳ Đang kiểm tra đồng bộ...</span>
                 <span id="gpsStatus" class="gps-status">📍 Lấy tọa độ GPS...</span>
                 <button class="btn-logout" onclick="logout()">Thoát</button>
             </div>
@@ -259,6 +268,9 @@
                 <span id="driverBusName" style="color:#1a73e8; font-weight:bold; font-size:15px;">Xe đang lái</span>
                 <input type="date" id="filterDateDriver" onchange="renderDriverList()" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
             </div>
+            <div style="background:#fff3cd; border:1px solid #ffeeba; padding:8px 10px; border-radius:6px; font-size:11px; color:#856404; margin-bottom:12px;">
+                💡 Để định vị không bị gián đoạn: <b>không khóa màn hình điện thoại</b> trong lúc chạy ca, và cắm sạc pin vì màn hình sẽ luôn bật sáng.
+            </div>
             
             <div id="driverList"></div>
             
@@ -308,6 +320,9 @@
 
         <!-- TAB 5: CAMERA ĐIỆN THOẠI & BẢO DƯỠNG -->
         <div id="tab-tracking" class="tab-content">
+            <h3 style="color:#1a73e8; font-size:16px; margin-bottom:10px;">📍 TRẠNG THÁI ĐỊNH VỊ CÁC XE</h3>
+            <div id="vehicleStatusPanel" class="vehicle-status-grid"></div>
+
             <h3 style="color:#1a73e8; font-size:16px; margin-bottom:10px;">📹 HỆ THỐNG CAMERA ĐIỆN THOẠI TRÊN XE</h3>
             
             <div style="background: #e8f0fe; border: 1px solid #1a73e8; padding: 12px; border-radius: 6px; margin-bottom: 10px; font-size: 13px;">
@@ -403,8 +418,37 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
-    
+
+    <!-- FIREBASE: dùng để đồng bộ vị trí GPS thời gian thực GIỮA NHIỀU THIẾT BỊ KHÁC NHAU
+         (điện thoại tài xế <-> máy tính admin). Nếu KHÔNG điền cấu hình bên dưới,
+         hệ thống tự động chạy ở "Chế độ Cục bộ" (chỉ đồng bộ trong cùng 1 trình duyệt/thiết bị). -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
     <script>
+        // ====== CẤU HÌNH FIREBASE (điền thông tin dự án Firebase của bạn vào đây) ======
+        // Hướng dẫn nhanh: console.firebase.google.com -> Tạo dự án (miễn phí) -> Realtime Database
+        // -> Bắt đầu ở chế độ Test -> Project Settings -> lấy đoạn config dán vào bên dưới.
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT"
+        };
+
+        let fbDB = null;
+        let useFirebase = false;
+        try {
+            if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY" && typeof firebase !== 'undefined') {
+                firebase.initializeApp(firebaseConfig);
+                fbDB = firebase.database();
+                useFirebase = true;
+            }
+        } catch (e) {
+            console.warn("Firebase chưa được cấu hình đúng, hệ thống chạy ở Chế độ Cục bộ.", e);
+            useFirebase = false;
+        }
+
         let map;
 
         const DB = {
@@ -423,6 +467,7 @@
         };
 
         let gpsWatchId = null;
+        let wakeLock = null;
         let adminFilterStatus = 'All';
         let currentVideoStream = null; 
         
@@ -460,6 +505,16 @@
         function logout() {
             if(gpsWatchId && navigator.geolocation) navigator.geolocation.clearWatch(gpsWatchId);
             if(adminGpsInterval) clearInterval(adminGpsInterval);
+            if(window.staleCheckInterval) clearInterval(window.staleCheckInterval);
+            releaseWakeLock();
+            if(useFirebase && fbDB) {
+                fbDB.ref('busLocations').off('value');
+                let role = sessionStorage.getItem('userRole');
+                let currentBus = sessionStorage.getItem('currentBus');
+                if(role === 'driver' && currentBus) {
+                    fbDB.ref('busLocations/' + currentBus + '/online').set(false);
+                }
+            }
             stopCamera();
             sessionStorage.clear();
             location.reload(); 
@@ -478,31 +533,24 @@
                     let lat = position.coords.latitude;
                     let lng = position.coords.longitude;
                     let speed = position.coords.speed || 0; // Tốc độ (m/s)
+                    let locData = { lat, lng, speed, time: new Date().toLocaleTimeString(), timestamp: Date.now(), online: true, driverName: sessionStorage.getItem('userName') || '' };
 
-                    // Lưu vào CSDL
+                    // Lưu vào CSDL cục bộ (dự phòng)
                     let locs = DB.getBusLocations();
-                    locs[busId] = { lat, lng, speed, time: new Date().toLocaleTimeString() };
+                    locs[busId] = locData;
                     DB.saveBusLocations(locs);
+
+                    // Đồng bộ lên Cloud để Admin xem được từ THIẾT BỊ KHÁC (nếu đã cấu hình Firebase)
+                    if(useFirebase && fbDB) {
+                        fbDB.ref('busLocations/' + busId).set(locData).catch(err => console.warn('Lỗi đồng bộ Firebase:', err));
+                    }
                     console.log(`Đã cập nhật vị trí ĐT xe ${busId}: Lat ${lat}, Lng ${lng}`);
 
                     // HIỂN THỊ XE LÊN BẢN ĐỒ TỨC THÌ CHO TÀI XẾ
                     if (map) {
-                        let latlng = [lat, lng];
-                        let speedKmH = Math.round(speed * 3.6);
-                        
-                        if (!window.busMarkers[busId]) {
-                            // Tạo marker lần đầu
-                            window.busMarkers[busId] = L.marker(latlng, {
-                                icon: L.divIcon({ html: '🚌', className: 'bus-icon', iconSize: [28, 28] })
-                            }).addTo(map).bindPopup(`<b>Xe: ${busId}</b><br>Tốc độ: ${speedKmH} km/h`);
-                            
-                            // Tự động zoom và chuyển góc nhìn về xe lần đầu tiên lấy được tọa độ
-                            map.setView(latlng, 15);
-                        } else {
-                            // Cập nhật vị trí marker
-                            window.busMarkers[busId].setLatLng(latlng);
-                            window.busMarkers[busId].getPopup().setContent(`<b>Xe: ${busId}</b><br>Tốc độ: ${speedKmH} km/h`);
-                        }
+                        let firstTime = !window.busMarkers[busId];
+                        updateBusMarkersOnMap(locs);
+                        if (firstTime) map.setView([lat, lng], 15); // Tự động zoom về xe lần đầu lấy được tọa độ
                     }
                     
                 }, (error) => {
@@ -520,6 +568,100 @@
                 labelElement.style.background = '#dc3545';
             }
         }
+
+        const BUS_LIST = ['77H-093.15', '77H-093.25', '77H-093.31', '77H-093.37'];
+        const STALE_MS = 45000; // quá 45 giây không cập nhật -> coi là mất tín hiệu / offline
+
+        // Vẽ / cập nhật marker của TẤT CẢ các xe lên bản đồ dựa trên dữ liệu vị trí mới nhất
+        function updateBusMarkersOnMap(locs) {
+            if (!map) return;
+            for (let bId in locs) {
+                let data = locs[bId];
+                if (!data || typeof data.lat !== 'number' || typeof data.lng !== 'number') continue;
+                let latlng = [data.lat, data.lng];
+                let speedKmH = Math.round((data.speed || 0) * 3.6);
+                let isFresh = data.timestamp ? (Date.now() - data.timestamp < STALE_MS) : true;
+                let iconClass = 'bus-icon' + (isFresh ? '' : ' offline');
+                let popupHtml = `<b>Xe: ${bId}</b>${data.driverName ? '<br>Tài xế: ' + data.driverName : ''}<br>Tốc độ: ${speedKmH} km/h<br><small>Cập nhật: ${data.time || ''}</small>${isFresh ? '' : '<br><b style="color:#dc3545;">⚠️ Mất tín hiệu</b>'}`;
+
+                if (!window.busMarkers[bId]) {
+                    window.busMarkers[bId] = L.marker(latlng, {
+                        icon: L.divIcon({ html: '🚌', className: iconClass, iconSize: [28, 28] })
+                    }).addTo(map).bindPopup(popupHtml);
+                } else {
+                    window.busMarkers[bId].setLatLng(latlng);
+                    window.busMarkers[bId].getPopup().setContent(popupHtml);
+                    let iconEl = window.busMarkers[bId].getElement();
+                    if (iconEl) { iconEl.className = iconEl.className.replace(/\bbus-icon\b\s*(offline)?/, iconClass); }
+                }
+            }
+        }
+
+        // Chỉ cập nhật lại icon online/offline (không cần dữ liệu mới) để phản ánh thời gian trôi qua
+        function refreshMarkerFreshness() {
+            let locs = DB.getBusLocations();
+            updateBusMarkersOnMap(locs);
+        }
+
+        // Bảng trạng thái từng xe hiển thị ở Tab 5 (Admin & Nhân viên xem được)
+        function renderVehicleStatus() {
+            let panel = document.getElementById('vehicleStatusPanel');
+            if (!panel) return;
+            let locs = DB.getBusLocations();
+            panel.innerHTML = BUS_LIST.map((bus, idx) => {
+                let data = locs[bus];
+                let isFresh = data && data.timestamp ? (Date.now() - data.timestamp < STALE_MS) : false;
+                let speedKmH = data ? Math.round((data.speed || 0) * 3.6) : 0;
+                return `<div class="vehicle-status-card ${isFresh ? 'online' : ''}">
+                    <div><span class="vs-dot"></span><b>Xe 0${idx+1} (${bus})</b></div>
+                    ${data ? `<div>👤 ${data.driverName || 'Không rõ'}</div><div>🚀 ${speedKmH} km/h &nbsp;|&nbsp; 🕐 ${data.time || ''}</div>` : `<div style="color:#999;">Chưa có dữ liệu định vị</div>`}
+                    ${data ? `<button onclick="flyToBus('${bus}')">🗺️ Xem trên bản đồ</button>` : ''}
+                </div>`;
+            }).join('');
+        }
+
+        window.flyToBus = function(busId) {
+            let locs = DB.getBusLocations();
+            let data = locs[busId];
+            if (!data || !map) return;
+            map.flyTo([data.lat, data.lng], 15, { duration: 1 });
+            if (window.busMarkers[busId]) window.busMarkers[busId].openPopup();
+        }
+
+        // ====== WAKE LOCK: giữ màn hình điện thoại luôn sáng khi tài xế đang chạy ca ======
+        // Lưu ý: đây là giới hạn của trình duyệt/hệ điều hành, KHÔNG THỂ giữ định vị hoạt động
+        // khi người dùng tự tắt màn hình hoặc khóa máy hoàn toàn - Wake Lock chỉ ngăn máy TỰ ĐỘNG
+        // tắt màn hình do không thao tác, để GPS được tiếp tục cập nhật liên tục.
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('🔆 Wake Lock đang bật - màn hình sẽ không tự tắt.');
+                    wakeLock.addEventListener('release', () => {
+                        console.log('Wake Lock đã bị giải phóng.');
+                    });
+                } else {
+                    console.warn('Trình duyệt này không hỗ trợ Wake Lock API.');
+                }
+            } catch (err) {
+                console.warn('Không thể bật Wake Lock:', err.message);
+            }
+        }
+
+        function releaseWakeLock() {
+            if (wakeLock) {
+                wakeLock.release().catch(() => {});
+                wakeLock = null;
+            }
+        }
+
+        // Trình duyệt tự động HỦY Wake Lock khi chuyển tab / tắt màn hình.
+        // Khi tài xế quay lại (mở khóa máy, mở lại tab) thì tự xin cấp lại.
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'visible' && sessionStorage.getItem('userRole') === 'driver') {
+                await requestWakeLock();
+            }
+        });
 
         function applyPermissions() {
             const role = sessionStorage.getItem('userRole');
@@ -544,26 +686,28 @@
                 
                 if(document.getElementById('btnCleanData')) document.getElementById('btnCleanData').style.display = 'inline-block';
                 
-                // ADMIN: Tự động tải vị trí tất cả các xe lên bản đồ mỗi 5 giây
-                if (!adminGpsInterval) {
+                // ADMIN: Theo dõi vị trí tất cả các xe trên bản đồ theo thời gian thực
+                if (useFirebase && fbDB) {
+                    // CHẾ ĐỘ CLOUD: nhận vị trí trực tiếp từ điện thoại tài xế qua Firebase, kể cả khác thiết bị
+                    fbDB.ref('busLocations').on('value', (snapshot) => {
+                        let locs = snapshot.val() || {};
+                        DB.saveBusLocations(locs); // cache cục bộ để renderVehicleStatus dùng chung
+                        updateBusMarkersOnMap(locs);
+                        renderVehicleStatus();
+                    });
+                } else if (!adminGpsInterval) {
+                    // CHẾ ĐỘ CỤC BỘ (dự phòng): chỉ hoạt động nếu Admin và Tài xế dùng chung 1 trình duyệt/thiết bị
                     adminGpsInterval = setInterval(() => {
-                        if(!map) return;
                         let locs = DB.getBusLocations();
-                        for (let bId in locs) {
-                            let data = locs[bId];
-                            let latlng = [data.lat, data.lng];
-                            let speedKmH = Math.round(data.speed * 3.6);
-                            
-                            if(!window.busMarkers[bId]) {
-                                window.busMarkers[bId] = L.marker(latlng, {
-                                    icon: L.divIcon({ html: '🚌', className: 'bus-icon', iconSize: [28, 28] })
-                                }).addTo(map).bindPopup(`<b>Xe: ${bId}</b><br>Tốc độ: ${speedKmH} km/h<br><small>Cập nhật: ${data.time}</small>`);
-                            } else {
-                                window.busMarkers[bId].setLatLng(latlng);
-                                window.busMarkers[bId].getPopup().setContent(`<b>Xe: ${bId}</b><br>Tốc độ: ${speedKmH} km/h<br><small>Cập nhật: ${data.time}</small>`);
-                            }
-                        }
+                        updateBusMarkersOnMap(locs);
+                        renderVehicleStatus();
                     }, 5000);
+                    updateBusMarkersOnMap(DB.getBusLocations());
+                    renderVehicleStatus();
+                }
+                // Luôn tự làm mới trạng thái online/offline (dựa theo thời gian) mỗi 10 giây
+                if (!window.staleCheckInterval) {
+                    window.staleCheckInterval = setInterval(() => { renderVehicleStatus(); refreshMarkerFreshness(); }, 10000);
                 }
             } 
             else if(role === 'staff') {
@@ -580,15 +724,23 @@
                 
                 // Khởi động GPS điện thoại cho tài xế và vẽ xe
                 startRealGPS(gpsLabel, currentBus);
+                // Giữ màn hình sáng để GPS không bị ngắt giữa chừng
+                requestWakeLock();
             }
             
             renderSeats(); renderAdminList(); renderDriverList(); renderBI(); renderTracking();
-            checkFraudAlertsUI(); renderAIScoring();
+            checkFraudAlertsUI(); renderAIScoring(); renderVehicleStatus();
         }
 
         window.onload = function() { 
             map = L.map('map').setView([14.0583, 108.2772], 6); 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+            let syncEl = document.getElementById('syncStatus');
+            if(syncEl) {
+                if(useFirebase) { syncEl.innerText = '☁️ Đồng bộ Cloud'; syncEl.style.background = '#28a745'; }
+                else { syncEl.innerText = '📵 Chế độ Cục bộ'; syncEl.style.background = '#ff9800'; }
+            }
 
             if(sessionStorage.getItem('userRole')) applyPermissions(); 
         }
@@ -719,11 +871,40 @@
             if(!confirm("Bạn có chắc chắn muốn báo hủy vé này? Đơn sẽ được lưu lại để chờ Admin xem xét.")) return;
             let trips = DB.getTrips(); 
             let trip = trips.find(t => t.id === id);
+            let wasBoarded = (trip.driverStatus === 'Đã lên xe' || trip.driverStatus === 'Đã xuống');
             trip.status = 'Tài xế báo hủy';
             trip.driverStatus = 'Đã hủy';
             DB.saveTrips(trips);
+
+            // Nếu khách ĐÃ LÊN XE mà sau đó lại bị báo hủy -> nghi vấn "hủy ảo" để giữ lại tiền mặt
+            if (wasBoarded) {
+                let alerts = DB.getAlerts();
+                alerts.push({ id: Date.now(), type: 'Hủy Ảo', busId: trip.busId, msg: `Hủy vé khách "${trip.name}" (Ghế ${trip.seat}) SAU KHI đã lên xe - nghi vấn hủy ảo giữ tiền!`, time: new Date().toLocaleTimeString() });
+                DB.saveAlerts(alerts);
+                checkFraudAlertsUI(); renderAIScoring();
+            }
+
             renderDriverList(); renderAdminList();
             alert("Đã ghi nhận báo hủy. Đơn vẫn hiển thị trong hệ thống chờ Admin xử lý!");
+        }
+
+        // Admin đánh dấu / gỡ nghi vấn gian lận cho một vé cụ thể
+        window.toggleFraudStatus = function(id) {
+            let trips = DB.getTrips();
+            let t = trips.find(x => x.id === id);
+            if(!t) return;
+            if(t.status.includes('Gian lận')) {
+                t.status = 'Bình thường';
+                DB.saveTrips(trips);
+                renderAdminList(); renderSeats();
+                alert("Đã gỡ nghi vấn gian lận, vé hoạt động bình thường trở lại.");
+            } else {
+                if(!confirm(`Đánh dấu vé của "${t.name}" là NGHI VẤN GIAN LẬN?\nVé sẽ bị khóa thao tác đối với tài xế cho đến khi được gỡ.`)) return;
+                t.status = 'Gian lận (Nghi vấn)';
+                DB.saveTrips(trips);
+                renderAdminList(); renderSeats();
+                alert("Đã đánh dấu vé này là nghi vấn gian lận.");
+            }
         }
 
         window.simulateGPSFraud = function() {
@@ -864,14 +1045,17 @@
                 let actionBtn = '';
                 let isCancelledOrFraud = t.status === 'Hủy' || t.status.includes('hủy') || t.status.includes('Gian lận');
 
+                let fraudBtn = (role === 'admin' && t.status !== 'Hủy') ? `<button onclick="toggleFraudStatus(${t.id})" style="background:${t.status.includes('Gian lận') ? '#28a745' : '#721c24'}; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">${t.status.includes('Gian lận') ? '✅ Gỡ nghi vấn' : '🚩 Đánh dấu Gian lận'}</button>` : '';
+
                 if (isCancelledOrFraud) {
-                    actionBtn = `<button onclick="deleteTripPermanently(${t.id})" style="background:#6c757d; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;" title="Xóa vĩnh viễn khỏi hệ thống">🗑️ Xóa vĩnh viễn</button>`;
+                    actionBtn = `<button onclick="deleteTripPermanently(${t.id})" style="background:#6c757d; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;" title="Xóa vĩnh viễn khỏi hệ thống">🗑️ Xóa vĩnh viễn</button>${fraudBtn}`;
                 } else if (t.driverStatus === 'Đã lên xe' || t.driverStatus === 'Đã xuống') {
                     if (role === 'admin') {
                         actionBtn = `
                             <button onclick="showQR(${t.id})" style="background:#007bff; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🎫 Xem Vé</button>
                             <button onclick="cancelTrip(${t.id})" style="background:#dc3545; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">❌ Hủy</button>
                             <button onclick="changeBus(${t.id})" style="background:#ff9800; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🚌 Đổi xe</button>
+                            ${fraudBtn}
                         `;
                     } else {
                         actionBtn = `<button onclick="showQR(${t.id})" style="background:#007bff; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🎫 Xem Vé</button>
@@ -882,6 +1066,7 @@
                         <button onclick="showQR(${t.id})" style="background:#007bff; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🎫 Xem Vé</button>
                         <button onclick="cancelTrip(${t.id})" style="background:#dc3545; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">❌ Hủy Vé</button>
                         <button onclick="changeBus(${t.id})" style="background:#ff9800; color:white; border:none; padding:6px; border-radius:4px; font-size:11px; margin-top:3px; width:100%; cursor:pointer;">🚌 Đổi xe</button>
+                        ${fraudBtn}
                     `;
                 }
 
