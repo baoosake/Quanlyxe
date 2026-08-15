@@ -91,6 +91,9 @@
         .video-container { background: #000; border-radius: 8px; overflow: hidden; height: 250px; margin-bottom: 15px; border: 2px solid #1a73e8; position: relative; display: flex; justify-content: center; align-items: center; color: white; font-size: 14px; text-align: center; padding: 10px; }
         .video-container video { width: 100%; height: 100%; object-fit: cover; }
 
+        /* --- Banner cảnh báo lỗi Firebase (thêm mới) --- */
+        #fbErrorBanner { display:none; position:fixed; top:0; left:0; width:100%; background:#dc3545; color:white; text-align:center; padding:10px 15px; font-size:13px; font-weight:bold; z-index:10001; box-shadow:0 2px 8px rgba(0,0,0,0.3); cursor:pointer; }
+
         @media (max-width: 768px) {
             body { flex-direction: column; overflow: auto; height: auto; }
             .sidebar { width: 100%; height: auto; min-height: 100vh; border-right: none; }
@@ -107,6 +110,9 @@
     </style>
 </head>
 <body>
+
+    <!-- BANNER LỖI FIREBASE (mới) -->
+    <div id="fbErrorBanner" onclick="alertFirebaseRulesHelp(window.__lastFbError)"></div>
 
     <!-- MÀN HÌNH ĐĂNG NHẬP -->
     <div id="loginScreen">
@@ -138,7 +144,7 @@
             <span id="userInfoText">Đang đăng nhập...</span>
             <div style="display: flex; align-items: center;">
                 <span id="networkStatus" class="network-status">🟢 Cloud</span>
-                <span id="syncStatus" class="network-status" style="background:#6c757d; margin-left:5px;">⏳ Đang kiểm tra đồng bộ...</span>
+                <span id="syncStatus" class="network-status" style="background:#6c757d; margin-left:5px; cursor:pointer;" onclick="alertFirebaseRulesHelp(window.__lastFbError)">⏳ Đang kiểm tra đồng bộ...</span>
                 <span id="gpsStatus" class="gps-status">📍 Lấy tọa độ GPS...</span>
                 <button class="btn-logout" onclick="logout()">Thoát</button>
             </div>
@@ -425,6 +431,12 @@
 
     <script>
         // ====== CẤU HÌNH FIREBASE ĐÃ ĐƯỢC TÍCH HỢP ======
+        // ⚠️ LƯU Ý QUAN TRỌNG: hãy vào Firebase Console > Realtime Database để COPY LẠI
+        // chính xác "databaseURL" hiển thị ở đó (nhất là phần vùng miền, ví dụ nếu bạn tạo
+        // Database ở khu vực Singapore/asia-southeast1 thì URL sẽ có dạng
+        // "https://<project-id>-default-rtdb.asia-southeast1.firebasedatabase.app"
+        // chứ KHÔNG phải "...firebaseio.com". Nếu URL sai vùng miền, mọi thao tác đọc/ghi
+        // sẽ thất bại dù project đã "kết nối đầy đủ" trên Console.
         const firebaseConfig = {
             apiKey: "AIzaSyAA_D5hcU01_JfaAVx3T-WPRKG8IgVQ8-o",
             authDomain: "baoosake-d4486.firebaseapp.com",
@@ -447,6 +459,73 @@
         } catch (e) {
             console.warn("Firebase chưa được cấu hình đúng, hệ thống chạy ở Chế độ Cục bộ.", e);
             useFirebase = false;
+        }
+
+        // ====== [MỚI] CHẨN ĐOÁN LỖI QUYỀN TRUY CẬP FIREBASE ======
+        // Đây là nguyên nhân phổ biến nhất khiến vị trí xe "kết nối được Firebase"
+        // nhưng KHÔNG hiện lên bản đồ ở máy khác: Realtime Database Rules đang
+        // chặn đọc/ghi (mặc định Firebase yêu cầu đăng nhập), và trước đây lỗi này
+        // bị "nuốt" âm thầm, không có gì báo cho bạn biết cả.
+        window.__lastFbError = null;
+
+        function showFirebaseErrorBanner(error) {
+            window.__lastFbError = error;
+            let banner = document.getElementById('fbErrorBanner');
+            if (banner) {
+                banner.style.display = 'block';
+                banner.innerText = '🔴 LỖI ĐỒNG BỘ FIREBASE — Bấm vào đây để xem cách sửa';
+            }
+            let syncEl = document.getElementById('syncStatus');
+            if (syncEl) {
+                syncEl.innerText = '🔴 Lỗi quyền Firebase!';
+                syncEl.style.background = '#dc3545';
+            }
+        }
+
+        function alertFirebaseRulesHelp(error) {
+            alert(
+                "⚠️ KHÔNG THỂ ĐỌC/GHI DỮ LIỆU LÊN FIREBASE!\n\n" +
+                "Lỗi kỹ thuật: " + (error && error.message ? error.message : (error || 'Không xác định')) + "\n\n" +
+                "NGUYÊN NHÂN PHỔ BIẾN NHẤT:\n" +
+                "Realtime Database Rules đang chặn truy cập (mặc định Firebase chỉ cho phép người dùng đã đăng nhập, mà app này không có đăng nhập Firebase Auth).\n\n" +
+                "CÁCH SỬA (làm trên Firebase Console):\n" +
+                "1. Vào Firebase Console > chọn dự án > Realtime Database > tab 'Rules'.\n" +
+                "2. Sửa nội dung Rules thành:\n" +
+                '   {\n     "rules": {\n       ".read": true,\n       ".write": true\n     }\n   }\n' +
+                "3. Bấm 'Publish' (Xuất bản) và tải lại (F5) trang web này.\n\n" +
+                "LƯU Ý: cách trên chỉ nên dùng khi nội bộ/thử nghiệm vì ai có link cũng đọc/ghi được dữ liệu. Muốn an toàn hơn, cần thêm Firebase Authentication.\n\n" +
+                "NGUYÊN NHÂN KHÁC CẦN KIỂM TRA:\n" +
+                "- 'databaseURL' trong code có khớp CHÍNH XÁC với URL hiển thị trong Console không (chú ý vùng miền: '...firebaseio.com' hay '...firebasedatabase.app').\n" +
+                "- Trang web có đang chạy trên HTTPS (hoặc localhost) không — trình duyệt chặn định vị GPS trên HTTP thường."
+            );
+        }
+
+        function checkFirebaseAccess() {
+            if (!useFirebase || !fbDB) return;
+            fbDB.ref('busLocations').once('value')
+                .then(() => {
+                    console.log('✅ Firebase: đọc dữ liệu thành công, quyền truy cập OK.');
+                    let syncEl = document.getElementById('syncStatus');
+                    if (syncEl && !syncEl.innerText.includes('Lỗi')) {
+                        syncEl.innerText = '☁️ Đồng bộ Cloud (OK)';
+                        syncEl.style.background = '#28a745';
+                    }
+                    let banner = document.getElementById('fbErrorBanner');
+                    if (banner) banner.style.display = 'none';
+                })
+                .catch((error) => {
+                    console.error('❌ Firebase LỖI QUYỀN TRUY CẬP:', error);
+                    showFirebaseErrorBanner(error);
+                });
+        }
+
+        // [MỚI - QUAN TRỌNG] Firebase Realtime Database KHÔNG cho phép ký tự . # $ [ ] trong key.
+        // Biển số xe dạng "77H-093.15" có dấu CHẤM -> nếu dùng thẳng làm đường dẫn Firebase,
+        // lệnh fbDB.ref('busLocations/' + busId) sẽ NÉM LỖI NGAY LẬP TỨC (throw), làm dừng toàn bộ
+        // đoạn code phía sau trong cùng hàm — kể cả phần vẽ marker lên bản đồ của chính tài xế.
+        // Đây chính là lý do vị trí "gửi thành công" (theo mắt bạn) nhưng không hiện lên bản đồ ở đâu cả.
+        function fbSafeKey(id) {
+            return String(id).replace(/[.#$\[\]]/g, '_');
         }
 
         let map;
@@ -518,10 +597,13 @@
             releaseWakeLock();
             if(useFirebase && fbDB) {
                 fbDB.ref('busLocations').off('value');
+                fbDB.ref('.info/connected').off('value');
                 let role = sessionStorage.getItem('userRole');
                 let currentBus = sessionStorage.getItem('currentBus');
                 if(role === 'driver' && currentBus) {
-                    fbDB.ref('busLocations/' + currentBus + '/online').set(false);
+                    let safeKey = fbSafeKey(currentBus);
+                    fbDB.ref('busLocations/' + safeKey + '/online').set(false);
+                    fbDB.ref('busLocations/' + safeKey).onDisconnect().cancel();
                 }
             }
             stopCamera();
@@ -533,6 +615,8 @@
         window.startRealGPS = function(labelElement, busId) {
             labelElement.classList.add('active');
             labelElement.innerText = '📍 Kết nối GPS...';
+
+            let firebaseOnDisconnectSet = false;
             
             if(navigator.geolocation) {
                 gpsWatchId = navigator.geolocation.watchPosition((position) => {
@@ -542,7 +626,7 @@
                     let lat = position.coords.latitude;
                     let lng = position.coords.longitude;
                     let speed = position.coords.speed || 0; // Tốc độ (m/s)
-                    let locData = { lat, lng, speed, time: new Date().toLocaleTimeString(), timestamp: Date.now(), online: true, driverName: sessionStorage.getItem('userName') || '' };
+                    let locData = { lat, lng, speed, time: new Date().toLocaleTimeString(), timestamp: Date.now(), online: true, driverName: sessionStorage.getItem('userName') || '', busId: busId };
 
                     // Lưu vào CSDL cục bộ (dành cho test cùng 1 máy tính)
                     let locs = DB.getBusLocations();
@@ -550,8 +634,32 @@
                     DB.saveBusLocations(locs);
 
                     // Đồng bộ lên Cloud để Admin xem được từ THIẾT BỊ KHÁC
+                    // [SỬA] Dùng khóa an toàn (đã bỏ dấu chấm) làm đường dẫn Firebase — biển số gốc
+                    // vẫn được lưu bên trong locData.busId để bên đọc khôi phục lại đúng biển số.
                     if(useFirebase && fbDB) {
-                        fbDB.ref('busLocations/' + busId).set(locData).catch(err => console.warn('Lỗi đồng bộ Firebase:', err));
+                        try {
+                            let safeKey = fbSafeKey(busId);
+                            let busRef = fbDB.ref('busLocations/' + safeKey);
+                            busRef.set(locData).then(() => {
+                                // Ghi thành công -> báo hiệu online, tắt banner lỗi nếu có
+                                let banner = document.getElementById('fbErrorBanner');
+                                if (banner) banner.style.display = 'none';
+
+                                // Tự động đánh dấu offline nếu tài xế mất mạng / đóng trình duyệt đột ngột
+                                if (!firebaseOnDisconnectSet) {
+                                    busRef.child('online').onDisconnect().set(false);
+                                    firebaseOnDisconnectSet = true;
+                                }
+                            }).catch(err => {
+                                console.warn('Lỗi đồng bộ Firebase:', err);
+                                labelElement.innerText = '🔒 Lỗi gửi vị trí lên Cloud! (Xem góc trên)';
+                                labelElement.style.background = '#dc3545';
+                                showFirebaseErrorBanner(err);
+                            });
+                        } catch (err) {
+                            console.error('Lỗi đường dẫn Firebase không hợp lệ:', err);
+                            showFirebaseErrorBanner(err);
+                        }
                     }
                     console.log(`Đã cập nhật vị trí ĐT xe ${busId}: Lat ${lat}, Lng ${lng}`);
 
@@ -563,9 +671,14 @@
                     }
                     
                 }, (error) => {
-                    labelElement.innerText = '⚠️ Lỗi/Mất tín hiệu GPS!';
+                    labelElement.innerText = '⚠️ Lỗi/Mất tín hiệu GPS! (' + error.message + ')';
                     labelElement.style.background = '#dc3545';
                     console.warn(`Lỗi lấy GPS: ${error.message}`);
+                    if (error.code === 1) {
+                        alert("Trình duyệt đã CHẶN quyền định vị. Vào Cài đặt trình duyệt > Quyền riêng tư > Vị trí, cấp lại quyền cho trang này rồi tải lại (F5).");
+                    } else if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                        alert("Trang web đang chạy KHÔNG PHẢI HTTPS. Hầu hết trình duyệt chặn định vị GPS trên các trang HTTP thường. Vui lòng host trang qua HTTPS.");
+                    }
                 }, { 
                     enableHighAccuracy: true, 
                     maximumAge: 10000, 
@@ -680,10 +793,27 @@
                 // ADMIN: Theo dõi vị trí
                 if (useFirebase && fbDB) {
                     fbDB.ref('busLocations').on('value', (snapshot) => {
-                        let locs = snapshot.val() || {};
+                        // [SỬA] Dữ liệu trên Firebase được lưu theo "khóa an toàn" (không dấu chấm).
+                        // Khôi phục lại key = biển số thật (locData.busId) để khớp với phần còn lại
+                        // của hệ thống (BUS_LIST, renderVehicleStatus, flyToBus... đều dùng biển số thật).
+                        let rawLocs = snapshot.val() || {};
+                        let locs = {};
+                        for (let k in rawLocs) {
+                            let d = rawLocs[k];
+                            let realId = (d && d.busId) ? d.busId : k;
+                            locs[realId] = d;
+                        }
                         DB.saveBusLocations(locs);
                         updateBusMarkersOnMap(locs);
                         renderVehicleStatus();
+                        let syncEl = document.getElementById('syncStatus');
+                        if (syncEl) { syncEl.innerText = '☁️ Đồng bộ Cloud (OK)'; syncEl.style.background = '#28a745'; }
+                        let banner = document.getElementById('fbErrorBanner');
+                        if (banner) banner.style.display = 'none';
+                    }, (error) => {
+                        // [MỚI] Bắt lỗi đọc dữ liệu — trước đây lỗi này bị bỏ qua hoàn toàn
+                        console.error('Lỗi đọc Firebase (Admin):', error);
+                        showFirebaseErrorBanner(error);
                     });
                 } else if (!adminGpsInterval) {
                     // Chạy quét liên tục để hỗ trợ test 2 tab trên cùng 1 máy
@@ -717,6 +847,7 @@
             
             renderSeats(); renderAdminList(); renderDriverList(); renderBI(); renderTracking();
             checkFraudAlertsUI(); renderAIScoring(); renderVehicleStatus();
+            checkFirebaseAccess(); // [MỚI] kiểm tra quyền truy cập ngay khi vào hệ thống
         }
 
         window.onload = function() { 
@@ -725,8 +856,25 @@
 
             let syncEl = document.getElementById('syncStatus');
             if(syncEl) {
-                if(useFirebase) { syncEl.innerText = '☁️ Đồng bộ Cloud'; syncEl.style.background = '#28a745'; }
+                if(useFirebase) { syncEl.innerText = '☁️ Đang kiểm tra kết nối...'; syncEl.style.background = '#ff9800'; }
                 else { syncEl.innerText = '📵 Chế độ Cục bộ'; syncEl.style.background = '#ff9800'; }
+            }
+
+            // [MỚI] Theo dõi trạng thái kết nối thực tới Firebase (không phải chỉ là "đã cấu hình")
+            if (useFirebase && fbDB) {
+                fbDB.ref('.info/connected').on('value', (snap) => {
+                    let el = document.getElementById('syncStatus');
+                    if (!el) return;
+                    if (el.innerText.includes('Lỗi')) return; // đừng ghi đè trạng thái lỗi quyền
+                    if (snap.val() === true) {
+                        el.innerText = '☁️ Đồng bộ Cloud (Đã kết nối)';
+                        el.style.background = '#28a745';
+                    } else {
+                        el.innerText = '🟠 Đang kết nối lại Cloud...';
+                        el.style.background = '#ff9800';
+                    }
+                });
+                checkFirebaseAccess();
             }
 
             if(sessionStorage.getItem('userRole')) applyPermissions(); 
