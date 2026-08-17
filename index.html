@@ -153,10 +153,10 @@
 </head>
 <body>
 
-    <!-- BANNER LỖI SUPABASE -->
+   
     <div id="dbErrorBanner" onclick="alertSupabaseError(window.__lastDbError)"></div>
 
-    <!-- MÀN HÌNH ĐĂNG NHẬP -->
+   
     <div id="loginScreen">
         <div class="login-box" id="loginMain">
             <h2>QUẢN LÝ NHÀ XE</h2>
@@ -373,8 +373,7 @@
             <h3 style="color:#1a73e8; font-size:16px; margin-bottom:10px;">📹 CAMERA THỰC TẾ TRÊN XE</h3>
 
             <div style="background: #e8f0fe; border: 1px solid #1a73e8; padding: 12px; border-radius: 6px; margin-bottom: 10px; font-size: 12px; line-height:1.6;">
-                💡 <b>Cách gắn camera thật:</b> Cài app phát luồng camera trên điện thoại gắn ở xe (ví dụ app "IP Webcam" cho Android), app sẽ cho ra 1 đường link dạng <code>http://...:8080/video</code> (MJPEG) hoặc <code>.m3u8</code> (HLS). Dán link đó vào ô bên dưới cho từng xe.<br>
-                ⚠️ Để Admin xem được <b>từ xa</b> (không cùng WiFi với xe), điện thoại trên xe cần cấu hình để link đó truy cập được qua Internet (bật port-forward + DDNS trên app, hoặc dùng dịch vụ camera/dashcam có sẵn link cloud công khai). Trình duyệt chỉ phát trực tiếp được luồng MJPEG hoặc HLS — không phát được RTSP thuần.
+                
             </div>
 
             <div class="cam-link-row">
@@ -476,7 +475,7 @@
         <div id="tab-users" class="tab-content">
             <h3 style="color:#1a73e8; font-size:16px; margin-bottom:10px;">👥 QUẢN LÝ TÀI KHOẢN & PHÂN QUYỀN</h3>
             <div style="background:#e8f0fe; border:1px solid #1a73e8; padding:12px; border-radius:6px; margin-bottom:15px; font-size:12px; line-height:1.6;">
-                💡 Để tạo tài khoản mới: vào Supabase Dashboard → Authentication → Users → "Add user" (nhập email + mật khẩu thật). Tài khoản sẽ tự xuất hiện ở danh sách dưới đây với quyền mặc định "staff" — hãy chỉnh lại vai trò (role) và xe phụ trách (nếu là tài xế) ngay tại đây.
+
             </div>
             <button onclick="loadUsersList()" style="background:#17a2b8; color:white; border:none; padding:8px 14px; border-radius:4px; font-weight:bold; cursor:pointer; margin-bottom:12px;">🔄 Tải lại danh sách</button>
             <div class="table-responsive">
