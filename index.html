@@ -62,7 +62,7 @@
 
         button.btn-calc { background: var(--primary); color: white; border: none; padding: 12px; border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; width: 100%; font-size: 14px; transition: 0.15s; box-shadow: var(--shadow-sm);}
         button.btn-calc:hover { background: var(--primary-dark); }
-        button.btn-submit { background-color: var(--accent); color: white; border: none; padding: 14px; width: 100%; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 10px; box-shadow: 0 6px 16px rgba(20,184,129,0.3); transition: 0.15s; }
+        button.btn-submit { background-color: var(--accent); color: white; border: none; padding: 14px; width: 100%; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700; cursor: margin-top: 10px; box-shadow: 0 6px 16px rgba(20,184,129,0.3); transition: 0.15s; }
         button.btn-submit:hover { filter: brightness(0.95); transform: translateY(-1px); }
 
         .seat-container { background: #fbfcfe; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--line); margin-bottom: 12px; }
@@ -523,10 +523,10 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
 
     <script>
-        // ====== CẤU HÌNH SUPABASE ĐÃ ĐƯỢC CHỈNH SỬA ======
-        const SUPABASE_URL = 'https://nxfqgbazuzfpdwlfcotw.supabase.co'; // [ĐÃ SỬA] Thay thế bằng link URL thực tế
+        // ====== CẤU HÌNH SUPABASE ======
+        const SUPABASE_URL = 'https://nxfqgbazuzfpdwlfcotw.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54ZnFnYmF6dXpmcGR3bGZjb3R3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4NjExODIsImV4cCI6MjEwMjQzNzE4Mn0.Uzn1x5Nqe0e15ruv0k7wsDZxBNJ4E2uWD5IDSPLlyvg';
-        const supaClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); // [ĐÃ SỬA] Đổi tên biến tránh xung đột
+        const supaClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Firebase Cloud Messaging (Chỉ dành cho thông báo đẩy)
         const firebaseConfig = {
@@ -555,6 +555,8 @@
         const VAPID_KEY = "BCblGHR460GXVufHERYndGVYFVA2W3qd4iDu-7JRQTSNiOhHi8nceg3zaihyF1KsDIP7nIPFyFxccMJ54sktD7s";
 
         window.__lastDbError = null;
+        let activeBusChannel = null;
+        let activeAlertChannel = null;
 
         function showSupabaseErrorBanner(error) {
             window.__lastDbError = error;
@@ -583,7 +585,7 @@
 
         function checkSupabaseAccess() {
             if (!useSupabase) return;
-            supaClient.from('settings').select('*').limit(1) // [ĐÃ SỬA]
+            supaClient.from('settings').select('*').limit(1)
                 .then(({ error }) => {
                     if (error) throw error;
                     console.log('✅ Supabase: truy cập database thành công.');
@@ -666,18 +668,24 @@
         }
 
         function logout() {
-            if(gpsWatchId && navigator.geolocation) navigator.geolocation.clearWatch(gpsWatchId);
-            if(adminGpsInterval) clearInterval(adminGpsInterval);
-            if(window.staleCheckInterval) clearInterval(window.staleCheckInterval);
+            if(gpsWatchId !== null && navigator.geolocation) {
+                navigator.geolocation.clearWatch(gpsWatchId);
+                gpsWatchId = null;
+            }
+
+            if(adminGpsInterval) { clearInterval(adminGpsInterval); adminGpsInterval = null; }
+            if(window.staleCheckInterval) { clearInterval(window.staleCheckInterval); window.staleCheckInterval = null; }
+
             releaseWakeLock();
             
-            // Xóa subscription realtime của Supabase
-            supaClient.removeAllChannels(); // [ĐÃ SỬA]
+            if(useSupabase) {
+                supaClient.removeAllChannels();
+            }
 
             let role = sessionStorage.getItem('userRole');
             let currentBus = sessionStorage.getItem('currentBus');
             if(role === 'driver' && currentBus) {
-                supaClient.from('busLocations').update({ online: false }).eq('busId', currentBus).then(); // [ĐÃ SỬA]
+                supaClient.from('busLocations').update({ online: false }).eq('busId', currentBus).then();
             }
 
             stopCamera();
@@ -685,30 +693,53 @@
             location.reload(); 
         }
 
+        let lastGpsSendTime = 0; // Biến ghi nhận thời điểm gửi GPS gần nhất
+
         window.startRealGPS = function(labelElement, busId) {
             labelElement.classList.add('active');
             labelElement.innerText = '📍 Kết nối GPS...';
             
             if(navigator.geolocation) {
+                if(gpsWatchId !== null) {
+                    navigator.geolocation.clearWatch(gpsWatchId);
+                }
+
                 gpsWatchId = navigator.geolocation.watchPosition((position) => {
-                    labelElement.innerText = '📍 Đang phát GPS điện thoại (' + busId + ')';
-                    labelElement.style.background = '#28a745';
-                    
                     let lat = position.coords.latitude;
                     let lng = position.coords.longitude;
                     let speed = position.coords.speed || 0; 
-                    let locData = { busId: busId, lat, lng, speed, time: new Date().toLocaleTimeString(), timestamp: Date.now(), online: true, driverName: sessionStorage.getItem('userName') || '' };
+                    let currentTime = Date.now();
+
+                    let locData = { 
+                        busId: busId, 
+                        lat, 
+                        lng, 
+                        speed, 
+                        time: new Date().toLocaleTimeString(), 
+                        timestamp: currentTime, 
+                        online: true, 
+                        driverName: sessionStorage.getItem('userName') || '' 
+                    };
 
                     let locs = DB.getBusLocations();
                     locs[busId] = locData;
                     DB.saveBusLocations(locs);
 
-                    // Sử dụng Supabase UPSERT để đồng bộ vị trí
-                    if(useSupabase) {
-                        supaClient.from('busLocations').upsert([locData]).then(({error}) => { // [ĐÃ SỬA]
+                    if (map) {
+                        let firstTime = !window.busMarkers[busId];
+                        updateBusMarkersOnMap(locs);
+                        if (firstTime) map.setView([lat, lng], 15);
+                    }
+
+                    // THROTTLE: Chỉ gửi lên Supabase tối thiểu sau mỗi 8 giây (8000ms) để tiết kiệm pin & tránh tràn request
+                    if (useSupabase && (currentTime - lastGpsSendTime >= 8000)) {
+                        lastGpsSendTime = currentTime;
+                        labelElement.innerText = '📍 Đang phát GPS (Đã đồng bộ Cloud)';
+                        
+                        supaClient.from('busLocations').upsert([locData]).then(({error}) => {
                             if(error) {
                                 console.warn('Lỗi đồng bộ Supabase:', error);
-                                labelElement.innerText = '🔒 Lỗi gửi vị trí lên Cloud! (Xem góc trên)';
+                                labelElement.innerText = '🔒 Lỗi gửi vị trí lên Cloud!';
                                 labelElement.style.background = '#dc3545';
                                 showSupabaseErrorBanner(error);
                             } else {
@@ -716,22 +747,19 @@
                                 if (banner) banner.style.display = 'none';
                             }
                         });
+                    } else if (!useSupabase) {
+                        labelElement.innerText = '📍 Đang phát GPS điện thoại (' + busId + ')';
+                        labelElement.style.background = '#28a745';
                     }
-
-                    if (map) {
-                        let firstTime = !window.busMarkers[busId];
-                        updateBusMarkersOnMap(locs);
-                        if (firstTime) map.setView([lat, lng], 15);
-                    }
-                    
+                        
                 }, (error) => {
                     labelElement.innerText = '⚠️ Lỗi/Mất tín hiệu GPS! (' + error.message + ')';
                     labelElement.style.background = '#dc3545';
                     console.warn(`Lỗi lấy GPS: ${error.message}`);
                 }, { 
                     enableHighAccuracy: true, 
-                    maximumAge: 10000, 
-                    timeout: 5000 
+                    maximumAge: 5000, 
+                    timeout: 10000 
                 });
             } else {
                 alert("Trình duyệt/Thiết bị của bạn không hỗ trợ định vị GPS!");
@@ -842,8 +870,7 @@
                 
                 // --- ĐỒNG BỘ SUPABASE CHO ADMIN ---
                 if (useSupabase) {
-                    // Lấy dữ liệu lần đầu
-                    supaClient.from('busLocations').select('*').then(({ data, error }) => { // [ĐÃ SỬA]
+                    supaClient.from('busLocations').select('*').then(({ data, error }) => {
                         if (error) return showSupabaseErrorBanner(error);
                         if (data) {
                             let locs = {};
@@ -854,8 +881,10 @@
                         }
                     });
 
-                    // Lắng nghe thay đổi vị trí Realtime
-                    supaClient.channel('public:busLocations') // [ĐÃ SỬA]
+                    if (activeBusChannel) supaClient.removeChannel(activeBusChannel);
+                    if (activeAlertChannel) supaClient.removeChannel(activeAlertChannel);
+
+                    activeBusChannel = supaClient.channel('public:busLocations')
                         .on('postgres_changes', { event: '*', schema: 'public', table: 'busLocations' }, payload => {
                             let locs = DB.getBusLocations();
                             locs[payload.new.busId] = payload.new;
@@ -864,12 +893,11 @@
                             renderVehicleStatus();
                         }).subscribe();
 
-                    // Lấy Cảnh báo lần đầu & Listen
-                    supaClient.from('fraudAlerts').select('*').then(({ data }) => { // [ĐÃ SỬA]
+                    supaClient.from('fraudAlerts').select('*').then(({ data }) => {
                         if (data) { DB.saveAlerts(data); checkFraudAlertsUI(); renderAIScoring(); }
                     });
 
-                    supaClient.channel('public:fraudAlerts') // [ĐÃ SỬA]
+                    activeAlertChannel = supaClient.channel('public:fraudAlerts')
                         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fraudAlerts' }, payload => {
                             let alerts = DB.getAlerts();
                             alerts.push(payload.new);
@@ -877,8 +905,7 @@
                             checkFraudAlertsUI(); renderAIScoring();
                         }).subscribe();
 
-                    // Đồng bộ Settings
-                    supaClient.from('settings').select('*').eq('key', 'stopAlertMinutes').limit(1).then(({ data }) => { // [ĐÃ SỬA]
+                    supaClient.from('settings').select('*').eq('key', 'stopAlertMinutes').limit(1).then(({ data }) => {
                         if (data && data.length > 0) {
                             DB.saveStopAlertMinutes(data[0].value);
                             if (document.getElementById('stopAlertMinutesInput')) document.getElementById('stopAlertMinutesInput').value = DB.getStopAlertMinutes();
@@ -1045,9 +1072,7 @@
             }).catch(err => { btn.innerText = '📍 DÒ ĐƯỜNG TRÊN BẢN ĐỒ'; alert("Lỗi tải bản đồ."); });
         }
 
-        // Đẩy 1 cảnh báo lên Supabase
         function pushAlert(alertObj) {
-            // Gắn ngày (để lọc theo ngày) và cờ "đã dọn dẹp" (mặc định false = đang hiển thị)
             if(!alertObj.date) alertObj.date = new Date().toISOString().split('T')[0];
             if(typeof alertObj.dismissed === 'undefined') alertObj.dismissed = false;
 
@@ -1055,7 +1080,7 @@
             alerts.push(alertObj);
             DB.saveAlerts(alerts);
             if(useSupabase) {
-                supaClient.from('fraudAlerts').insert([alertObj]).then(({error}) => { // [ĐÃ SỬA]
+                supaClient.from('fraudAlerts').insert([alertObj]).then(({error}) => {
                     if(error) console.warn('Lỗi đẩy cảnh báo lên Cloud:', error);
                 });
             }
@@ -1105,9 +1130,6 @@
             renderAlertLog();
         }
 
-        // "Dọn dẹp lỗi": đánh dấu các cảnh báo đang hiển thị là đã xử lý (dismissed).
-        // Lỗi sẽ biến mất khỏi bảng cảnh báo và KHÔNG hiện lại nữa (kể cả khi tải lại trang/đồng bộ Cloud),
-        // nhưng vẫn được lưu trong "Nhật ký lỗi theo ngày" để tra cứu về sau.
         window.clearAlerts = function() {
             let alerts = DB.getAlerts();
             let activeIds = alerts.filter(a => !a.dismissed).map(a => a.id);
@@ -1117,14 +1139,13 @@
             DB.saveAlerts(alerts);
 
             if(useSupabase) {
-                supaClient.from('fraudAlerts').update({ dismissed: true }).in('id', activeIds).then(({error}) => { // [ĐÃ SỬA]
-                    if(error) console.warn('Lỗi cập nhật trạng thái dọn dẹp lên Cloud (có thể do thiếu cột "dismissed" trong bảng fraudAlerts):', error);
+                supaClient.from('fraudAlerts').update({ dismissed: true }).in('id', activeIds).then(({error}) => {
+                    if(error) console.warn('Lỗi cập nhật trạng thái dọn dẹp lên Cloud:', error);
                 });
             }
             checkFraudAlertsUI(); renderAIScoring();
         }
 
-        // Nhật ký lỗi theo ngày — hiển thị TẤT CẢ lỗi (kể cả đã dọn dẹp) của 1 ngày cụ thể để tra cứu lịch sử.
         function renderAlertLog() {
             let box = document.getElementById('alertLogList');
             if(!box) return;
@@ -1302,7 +1323,6 @@
             document.getElementById('phoiChiPhi').value = ""; document.getElementById('phoiNote').value = "";
         }
 
-        // --- TAB 4: AI & BÁO CÁO ---
         function renderBI() {
             let trips = DB.getTrips().filter(t => t.date === document.getElementById('filterDateBI').value && t.type === 'Khách' && t.status !== 'Hủy');
             let html = "";
@@ -1316,7 +1336,7 @@
 
         function renderAIScoring() {
             const buses = ['77H-093.15', '77H-093.25', '77H-093.31', '77H-093.37'];
-            let alerts = DB.getAlerts().filter(a => !a.dismissed); // Chỉ tính điểm rủi ro trên lỗi CHƯA được dọn dẹp
+            let alerts = DB.getAlerts().filter(a => !a.dismissed);
             let html = ''; let highestRiskBus = 'Không'; let maxRisk = -1;
 
             buses.forEach(bus => {
@@ -1336,7 +1356,6 @@
             adviceBox.innerHTML = maxRisk > 0 ? `⚠️ Xe <b>${highestRiskBus}</b> đang có rủi ro ${maxRisk}%. Đề nghị mở camera kiểm tra.` : `✅ Các xe vận hành bình thường.`;
         }
 
-        // --- TAB 5: CAMERA THẬT TRÊN XE ---
         window.saveCameraLink = function() {
             const busId = document.getElementById('camLinkBusSelect').value;
             const url = document.getElementById('camLinkInput').value.trim();
@@ -1346,7 +1365,7 @@
             DB.saveCameraLinks(links);
             
             if(useSupabase) {
-                supaClient.from('cameraLinks').upsert([{ busId, url }]).then(({error}) => { // [ĐÃ SỬA]
+                supaClient.from('cameraLinks').upsert([{ busId, url }]).then(({error}) => {
                     if (error) console.warn('Lỗi lưu link camera:', error);
                 });
             }
@@ -1364,7 +1383,7 @@
             DB.saveCameraLinks(links);
             
             if(useSupabase) {
-                supaClient.from('cameraLinks').delete().eq('busId', busId).then(); // [ĐÃ SỬA]
+                supaClient.from('cameraLinks').delete().eq('busId', busId).then();
             }
             
             renderCameraLinksList();
@@ -1388,7 +1407,7 @@
 
         function loadCameraLinksFromCloud() {
             if(!useSupabase) return;
-            supaClient.from('cameraLinks').select('*').then(({ data }) => { // [ĐÃ SỬA]
+            supaClient.from('cameraLinks').select('*').then(({ data }) => {
                 if (data) {
                     let links = DB.getCameraLinks();
                     data.forEach(d => links[d.busId] = d.url);
@@ -1425,7 +1444,7 @@
                     statusElem.innerHTML = '<span style="color:#dc3545;">Trình duyệt này không phát được HLS.</span>';
                 }
             } else {
-                imgElem.onerror = () => { statusElem.style.display = 'block'; statusElem.innerHTML = '<span style="color:#dc3545;">❌ Không tải được luồng. Kiểm tra: link còn đúng không, xe/điện thoại có đang bật app camera và có Internet không, link có truy cập được từ ngoài mạng LAN của xe không.</span>'; imgElem.style.display = 'none'; };
+                imgElem.onerror = () => { statusElem.style.display = 'block'; statusElem.innerHTML = '<span style="color:#dc3545;">❌ Không tải được luồng. Kiểm tra: link còn đúng không, xe/điện thoại có đang bật app camera và có Internet không.</span>'; imgElem.style.display = 'none'; };
                 imgElem.onload = () => { statusElem.style.display = 'none'; imgElem.style.display = 'block'; };
                 imgElem.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now(); 
             }
@@ -1435,7 +1454,7 @@
             let links = DB.getCameraLinks();
             let url = links[busId];
             const statusElem = document.getElementById(statusId);
-            if(!url) { statusElem.style.display = 'block'; statusElem.innerHTML = `⚠️ Xe <b>${busId}</b> chưa được gắn link camera. Vào mục "Cấu hình link Camera" phía trên để thêm.`; return; }
+            if(!url) { statusElem.style.display = 'block'; statusElem.innerHTML = `⚠️ Xe <b>${busId}</b> chưa được gắn link camera.`; return; }
             loadStreamIntoElements(url, videoId, imgId, statusId);
         }
 
@@ -1484,59 +1503,50 @@
             let mins = parseFloat(document.getElementById('stopAlertMinutesInput').value) || 2;
             DB.saveStopAlertMinutes(mins);
             if(useSupabase) { 
-                supaClient.from('settings').upsert([{ key: 'stopAlertMinutes', value: mins.toString() }]).then(); // [ĐÃ SỬA]
+                supaClient.from('settings').upsert([{ key: 'stopAlertMinutes', value: mins.toString() }]).then();
             }
             alert(`Đã lưu: cảnh báo nếu xe dừng quá ${mins} phút.`);
         }
 
-        // Phát hiện iOS (Safari, Chrome-iOS đều dùng WebKit nên chung giới hạn Push)
         function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream; }
-        // Trên iOS, Web Push CHỈ hoạt động khi trang đã được "Thêm vào Màn hình chính" (chạy như PWA độc lập)
         function isIOSStandalone() { return window.navigator.standalone === true; }
 
         window.enablePushNotifications = function() {
             const statusEl = document.getElementById('pushStatus');
 
-            // 1) Bắt buộc HTTPS (hoặc localhost) — nếu không, Service Worker/Push sẽ không đăng ký được, kể cả trên Android
             if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-                statusEl.innerText = '❌ Trang chưa chạy HTTPS — bắt buộc phải có HTTPS để bật thông báo (kể cả trên điện thoại).';
+                statusEl.innerText = '❌ Trang chưa chạy HTTPS — bắt buộc phải có HTTPS để bật thông báo.';
                 return;
             }
 
-            // 2) iOS: chỉ hỗ trợ Web Push từ iOS 16.4+ và CHỈ khi đã "Thêm vào Màn hình chính"
             if (isIOS() && !isIOSStandalone()) {
-                statusEl.innerHTML = '⚠️ Trên iPhone/iPad: mở Safari → bấm nút Chia sẻ → "Thêm vào Màn hình chính", rồi mở lại app từ biểu tượng đó và bấm nút này lần nữa. iOS không cho phép nhận thông báo nếu mở bằng trình duyệt thường.';
+                statusEl.innerHTML = '⚠️ Trên iPhone/iPad: mở Safari → bấm nút Chia sẻ → "Thêm vào Màn hình chính", rồi mở lại app từ biểu tượng đó.';
                 return;
             }
 
-            if (!('serviceWorker' in navigator)) { statusEl.innerText = '❌ Trình duyệt này không hỗ trợ Service Worker (cần thiết để nhận thông báo khi tắt màn hình).'; return; }
-            if (!('Notification' in window)) { statusEl.innerText = '❌ Thiết bị/trình duyệt này không hỗ trợ thông báo web.'; return; }
-            if (!fbMessaging) { statusEl.innerText = '❌ Firebase Messaging không khởi tạo được trên trình duyệt này.'; return; }
-            if (VAPID_KEY.includes('DÁN_VAPID_KEY')) { statusEl.innerText = '⚠️ Chưa cấu hình VAPID_KEY trong code!'; return; }
+            if (!('serviceWorker' in navigator)) { statusEl.innerText = '❌ Trình duyệt không hỗ trợ Service Worker.'; return; }
+            if (!('Notification' in window)) { statusEl.innerText = '❌ Thiết bị không hỗ trợ thông báo web.'; return; }
+            if (!fbMessaging) { statusEl.innerText = '❌ Firebase Messaging không khởi tạo được.'; return; }
+            if (VAPID_KEY.includes('DÁN_VAPID_KEY')) { statusEl.innerText = '⚠️ Chưa cấu hình VAPID_KEY!'; return; }
 
             statusEl.innerText = 'Đang xin quyền thông báo...';
             Notification.requestPermission().then(permission => {
-                if (permission !== 'granted') { statusEl.innerText = '❌ Bạn đã từ chối quyền thông báo. Vào Cài đặt trình duyệt/điện thoại > Thông báo > bật lại cho trang này.'; return; }
+                if (permission !== 'granted') { statusEl.innerText = '❌ Bạn đã từ chối quyền thông báo.'; return; }
 
                 navigator.serviceWorker.register('./firebase-messaging-sw.js').then(registration => {
                     return fbMessaging.getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
                 }).then(token => {
                     if (!token) { statusEl.innerText = '❌ Không lấy được token.'; return; }
                     
-                    // [ĐÃ SỬA] Đã thêm code tự động đẩy FCM Token lên máy chủ Supabase để gửi thông báo
                     if(useSupabase) {
                         supaClient.from('adminTokens').upsert([{ token: token }]).then();
                     }
 
-                    statusEl.innerText = '✅ Đã bật! Thiết bị này sẽ nhận thông báo kể cả khi tắt màn hình/đóng trình duyệt.';
+                    statusEl.innerText = '✅ Đã bật! Thiết bị này sẽ nhận thông báo kể cả khi tắt màn hình.';
                     localStorage.setItem('fcmToken', token);
                 }).catch(err => {
                     console.error('Lỗi đăng ký thông báo đẩy:', err);
-                    if (err && err.code === 'messaging/failed-service-worker-registration') {
-                        statusEl.innerText = '❌ Không tìm thấy file firebase-messaging-sw.js trên máy chủ. Cần tải file này lên CÙNG thư mục gốc với trang web (không phải thư mục con).';
-                    } else {
-                        statusEl.innerText = '❌ Lỗi: ' + err.message;
-                    }
+                    statusEl.innerText = '❌ Lỗi: ' + err.message;
                 });
             });
         }
@@ -1569,24 +1579,36 @@
             if (sessionStorage.getItem('userRole') !== 'admin') return;
             let locs = DB.getBusLocations();
             let thresholdMs = DB.getStopAlertMinutes() * 60 * 1000;
+            let adminNow = Date.now(); // Sử dụng đồng hồ máy Admin làm chuẩn tuyệt đối
 
             BUS_LIST.forEach(bus => {
                 let data = locs[bus];
-                if (!data || typeof data.speed !== 'number' || typeof data.timestamp !== 'number') { window.busStopTracker[bus] = null; return; }
+                if (!data || typeof data.speed !== 'number' || typeof data.timestamp !== 'number') { 
+                    window.busStopTracker[bus] = null; return; 
+                }
 
-                let isFresh = (Date.now() - data.timestamp) < STALE_MS;
-                if (!isFresh) { window.busStopTracker[bus] = null; return; } 
+                // Kiểm tra tín hiệu có cũ không (mất mạng > 45s)
+                let isFresh = (adminNow - data.timestamp) < STALE_MS;
+                if (!isFresh) { 
+                    window.busStopTracker[bus] = null; return; 
+                } 
 
                 let speedKmH = (data.speed || 0) * 3.6;
                 if (speedKmH < STOP_SPEED_KMH) {
                     if (!window.busStopTracker[bus]) {
-                        window.busStopTracker[bus] = { since: data.timestamp, alerted: false };
+                        window.busStopTracker[bus] = { since: adminNow, alerted: false };
                     } else {
-                        let stoppedMs = Date.now() - window.busStopTracker[bus].since;
+                        let stoppedMs = adminNow - window.busStopTracker[bus].since;
                         if (stoppedMs >= thresholdMs && !window.busStopTracker[bus].alerted) {
                             window.busStopTracker[bus].alerted = true;
                             let mins = Math.round(stoppedMs / 60000);
-                            pushAlert({ id: Date.now(), type: 'Dừng Lâu', busId: bus, msg: `Xe đã dừng liên tục khoảng ${mins} phút. Vui lòng kiểm tra Camera!`, time: new Date().toLocaleTimeString() });
+                            pushAlert({ 
+                                id: Date.now(), 
+                                type: 'Dừng Lâu', 
+                                busId: bus, 
+                                msg: `Xe đã dừng liên tục khoảng ${mins} phút. Vui lòng kiểm tra Camera!`, 
+                                time: new Date().toLocaleTimeString() 
+                            });
                             checkFraudAlertsUI(); renderAIScoring();
                             playAlertBeep();
                         }
@@ -1596,7 +1618,6 @@
                 }
             });
         }
-
 
         window.addTrackingRecord = function() {
             const busId = document.getElementById('trackBus').value; const type = document.getElementById('trackType').value;
