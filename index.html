@@ -62,7 +62,7 @@
 
         button.btn-calc { background: var(--primary); color: white; border: none; padding: 12px; border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; width: 100%; font-size: 14px; transition: 0.15s; box-shadow: var(--shadow-sm);}
         button.btn-calc:hover { background: var(--primary-dark); }
-        button.btn-submit { background-color: var(--accent); color: white; border: none; padding: 14px; width: 100%; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700; cursor: margin-top: 10px; box-shadow: 0 6px 16px rgba(20,184,129,0.3); transition: 0.15s; }
+        button.btn-submit { background-color: var(--accent); color: white; border: none; padding: 14px; width: 100%; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 10px; box-shadow: 0 6px 16px rgba(20,184,129,0.3); transition: 0.15s; }
         button.btn-submit:hover { filter: brightness(0.95); transform: translateY(-1px); }
 
         .seat-container { background: #fbfcfe; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--line); margin-bottom: 12px; }
@@ -557,6 +557,21 @@
         window.__lastDbError = null;
         let activeBusChannel = null;
         let activeAlertChannel = null;
+        window.activeTripsChannel = null; // Biến quản lý kênh đồng bộ vé
+
+        // Hàm đẩy/cập nhật 1 vé lên Supabase
+        window.updateTripOnCloud = function(tripData) {
+            if(useSupabase) {
+                supaClient.from('trips').upsert([tripData]).then(({error}) => {
+                    if(error) console.warn("Lỗi đồng bộ vé lên Cloud:", error);
+                });
+            }
+        };
+
+        // Hàm xóa vé trên Supabase
+        window.deleteTripOnCloud = function(id) {
+            if(useSupabase) supaClient.from('trips').delete().eq('id', id).then();
+        };
 
         function showSupabaseErrorBanner(error) {
             window.__lastDbError = error;
@@ -693,7 +708,7 @@
             location.reload(); 
         }
 
-        let lastGpsSendTime = 0; // Biến ghi nhận thời điểm gửi GPS gần nhất
+        let lastGpsSendTime = 0; 
 
         window.startRealGPS = function(labelElement, busId) {
             labelElement.classList.add('active');
@@ -731,7 +746,6 @@
                         if (firstTime) map.setView([lat, lng], 15);
                     }
 
-                    // THROTTLE: Chỉ gửi lên Supabase tối thiểu sau mỗi 8 giây (8000ms) để tiết kiệm pin & tránh tràn request
                     if (useSupabase && (currentTime - lastGpsSendTime >= 8000)) {
                         lastGpsSendTime = currentTime;
                         labelElement.innerText = '📍 Đang phát GPS (Đã đồng bộ Cloud)';
@@ -868,7 +882,6 @@
                 
                 if(document.getElementById('btnCleanData')) document.getElementById('btnCleanData').style.display = 'inline-block';
                 
-                // --- ĐỒNG BỘ SUPABASE CHO ADMIN ---
                 if (useSupabase) {
                     supaClient.from('busLocations').select('*').then(({ data, error }) => {
                         if (error) return showSupabaseErrorBanner(error);
@@ -940,7 +953,37 @@
                 requestWakeLock();
             }
             
-            renderSeats(); renderAdminList(); renderDriverList(); renderBI(); renderTracking();
+            // --- ĐỒNG BỘ VÉ (TRIPS) CHO TẤT CẢ (ADMIN, NHÂN VIÊN, TÀI XẾ) ---
+            if (useSupabase) {
+                // Lấy dữ liệu vé từ Cloud khi vừa đăng nhập
+                supaClient.from('trips').select('*').then(({ data, error }) => {
+                    if (data) {
+                        DB.saveTrips(data);
+                        renderSeats(); renderAdminList(); renderDriverList(); renderBI(); renderTracking();
+                    }
+                });
+
+                // Hủy kênh cũ nếu có và tạo kênh Lắng nghe Realtime
+                if (window.activeTripsChannel) supaClient.removeChannel(window.activeTripsChannel);
+
+                window.activeTripsChannel = supaClient.channel('public:trips')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, payload => {
+                        let currentTrips = DB.getTrips();
+                        if (payload.eventType === 'INSERT') {
+                            if (!currentTrips.find(t => t.id === payload.new.id)) currentTrips.push(payload.new);
+                        } else if (payload.eventType === 'UPDATE') {
+                            let idx = currentTrips.findIndex(t => t.id === payload.new.id);
+                            if (idx > -1) currentTrips[idx] = payload.new;
+                        } else if (payload.eventType === 'DELETE') {
+                            currentTrips = currentTrips.filter(t => t.id !== payload.old.id);
+                        }
+                        DB.saveTrips(currentTrips);
+                        renderSeats(); renderAdminList(); renderDriverList(); renderBI();
+                    }).subscribe();
+            } else {
+                renderSeats(); renderAdminList(); renderDriverList(); renderBI(); renderTracking();
+            }
+
             checkFraudAlertsUI(); renderAIScoring(); renderVehicleStatus();
             checkSupabaseAccess(); 
 
@@ -1025,7 +1068,8 @@
             };
 
             let trips = DB.getTrips(); trips.push(tripData); DB.saveTrips(trips);
-            
+            updateTripOnCloud(tripData); // ĐỒNG BỘ CLOUD
+
             document.getElementById('name').value = ''; document.getElementById('phone').value = ''; document.getElementById('price').value = ''; document.getElementById('finalPrice').value = '';
             selectedSeat = ""; document.getElementById('seatInput').value = ""; 
             if(isCus) renderSeats(); renderAdminList(); renderDriverList(); renderBI();
@@ -1094,6 +1138,7 @@
             trip.status = 'Tài xế báo hủy';
             trip.driverStatus = 'Đã hủy';
             DB.saveTrips(trips);
+            updateTripOnCloud(trip); // ĐỒNG BỘ CLOUD
 
             if (wasBoarded) {
                 pushAlert({ id: Date.now(), type: 'Hủy Ảo', busId: trip.busId, msg: `Nghi vấn hủy ảo vé "${trip.name}" sau khi lên xe!`, time: new Date().toLocaleTimeString() });
@@ -1106,10 +1151,16 @@
         window.toggleFraudStatus = function(id) {
             let trips = DB.getTrips(); let t = trips.find(x => x.id === id); if(!t) return;
             if(t.status.includes('Gian lận')) {
-                t.status = 'Bình thường'; DB.saveTrips(trips); renderAdminList(); renderSeats();
+                t.status = 'Bình thường'; 
+                DB.saveTrips(trips); 
+                updateTripOnCloud(t); // ĐỒNG BỘ CLOUD
+                renderAdminList(); renderSeats();
             } else {
                 if(!confirm(`Đánh dấu GIAN LẬN?`)) return;
-                t.status = 'Gian lận (Nghi vấn)'; DB.saveTrips(trips); renderAdminList(); renderSeats();
+                t.status = 'Gian lận (Nghi vấn)'; 
+                DB.saveTrips(trips); 
+                updateTripOnCloud(t); // ĐỒNG BỘ CLOUD
+                renderAdminList(); renderSeats();
             }
         }
 
@@ -1185,7 +1236,9 @@
             let trips = DB.getTrips(); let t = trips.find(x => x.id === id);
             let targetBus = prompt("Chuyển sang xe (Ví dụ: 77H-093.15):", t.busId);
             if(targetBus && ['77H-093.15', '77H-093.25', '77H-093.31', '77H-093.37'].includes(targetBus)) {
-                t.busId = targetBus; DB.saveTrips(trips);
+                t.busId = targetBus; 
+                DB.saveTrips(trips);
+                updateTripOnCloud(t); // ĐỒNG BỘ CLOUD
                 renderAdminList(); renderSeats(); renderDriverList(); renderBI();
             } else if(targetBus) { alert("Biển số không hợp lệ!"); }
         }
@@ -1257,12 +1310,15 @@
         function cancelTrip(id) { 
             let trips = DB.getTrips(); let t = trips.find(x => x.id === id);
             t.status = 'Hủy'; t.driverStatus = 'Đã hủy';
-            DB.saveTrips(trips); renderAdminList(); renderSeats(); renderDriverList(); renderBI();
+            DB.saveTrips(trips); 
+            updateTripOnCloud(t); // ĐỒNG BỘ CLOUD
+            renderAdminList(); renderSeats(); renderDriverList(); renderBI();
         }
 
         function deleteTripPermanently(id) {
             if(confirm("Xóa vĩnh viễn?")) {
                 let trips = DB.getTrips().filter(x => x.id !== id); DB.saveTrips(trips);
+                deleteTripOnCloud(id); // ĐỒNG BỘ CLOUD
                 renderAdminList(); renderSeats(); renderDriverList(); renderBI();
             }
         }
@@ -1306,7 +1362,9 @@
             if(trip.status.includes('Gian lận')) return alert("Vé bị phong tỏa!");
             trip.driverStatus = status; 
             if (status === 'Đã xuống' && trip.paymentStatus === 'Chưa thu') { trip.paymentStatus = 'Đã nhận (Lơ thu)'; }
-            DB.saveTrips(trips); renderDriverList(); renderAdminList();
+            DB.saveTrips(trips); 
+            updateTripOnCloud(trip); // ĐỒNG BỘ CLOUD
+            renderDriverList(); renderAdminList();
         }
         
         window.chotPhoiXe = function() { 
