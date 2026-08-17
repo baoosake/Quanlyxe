@@ -284,7 +284,6 @@
 
             <div style="display: flex; justify-content:space-between; align-items: center; margin-bottom: 10px;">
                 <h3 style="color:#1a73e8; font-size:16px;">📋 DANH SÁCH HÀNH KHÁCH</h3>
-                <button onclick="simulateGPSFraud()" style="background:#dc3545; color:white; border:none; padding:8px 10px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer;">🤖 Test Lỗi Định Vị</button>
             </div>
 
             <div id="adminMiniDash" style="display: flex; gap: 6px; margin-bottom: 15px;"></div>
@@ -557,7 +556,7 @@
         window.__lastDbError = null;
         let activeBusChannel = null;
         let activeAlertChannel = null;
-        window.activeTripsChannel = null; // Biến quản lý kênh đồng bộ vé
+        window.activeTripsChannel = null; 
 
         // Hàm đẩy/cập nhật 1 vé lên Supabase
         window.updateTripOnCloud = function(tripData) {
@@ -730,7 +729,7 @@
                         lat, 
                         lng, 
                         speed, 
-                        time: new Date().toLocaleTimeString(), 
+                        time: new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false }), 
                         timestamp: currentTime, 
                         online: true, 
                         driverName: sessionStorage.getItem('userName') || '' 
@@ -955,7 +954,6 @@
             
             // --- ĐỒNG BỘ VÉ (TRIPS) CHO TẤT CẢ (ADMIN, NHÂN VIÊN, TÀI XẾ) ---
             if (useSupabase) {
-                // Lấy dữ liệu vé từ Cloud khi vừa đăng nhập
                 supaClient.from('trips').select('*').then(({ data, error }) => {
                     if (data) {
                         DB.saveTrips(data);
@@ -963,7 +961,6 @@
                     }
                 });
 
-                // Hủy kênh cũ nếu có và tạo kênh Lắng nghe Realtime
                 if (window.activeTripsChannel) supaClient.removeChannel(window.activeTripsChannel);
 
                 window.activeTripsChannel = supaClient.channel('public:trips')
@@ -1068,7 +1065,7 @@
             };
 
             let trips = DB.getTrips(); trips.push(tripData); DB.saveTrips(trips);
-            updateTripOnCloud(tripData); // ĐỒNG BỘ CLOUD
+            updateTripOnCloud(tripData); 
 
             document.getElementById('name').value = ''; document.getElementById('phone').value = ''; document.getElementById('price').value = ''; document.getElementById('finalPrice').value = '';
             selectedSeat = ""; document.getElementById('seatInput').value = ""; 
@@ -1138,10 +1135,10 @@
             trip.status = 'Tài xế báo hủy';
             trip.driverStatus = 'Đã hủy';
             DB.saveTrips(trips);
-            updateTripOnCloud(trip); // ĐỒNG BỘ CLOUD
+            updateTripOnCloud(trip); 
 
             if (wasBoarded) {
-                pushAlert({ id: Date.now(), type: 'Hủy Ảo', busId: trip.busId, msg: `Nghi vấn hủy ảo vé "${trip.name}" sau khi lên xe!`, time: new Date().toLocaleTimeString() });
+                pushAlert({ id: Date.now(), type: 'Hủy Ảo', busId: trip.busId, msg: `Nghi vấn hủy ảo vé "${trip.name}" sau khi lên xe!`, time: new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false }) });
                 checkFraudAlertsUI(); renderAIScoring();
             }
 
@@ -1153,20 +1150,15 @@
             if(t.status.includes('Gian lận')) {
                 t.status = 'Bình thường'; 
                 DB.saveTrips(trips); 
-                updateTripOnCloud(t); // ĐỒNG BỘ CLOUD
+                updateTripOnCloud(t); 
                 renderAdminList(); renderSeats();
             } else {
                 if(!confirm(`Đánh dấu GIAN LẬN?`)) return;
                 t.status = 'Gian lận (Nghi vấn)'; 
                 DB.saveTrips(trips); 
-                updateTripOnCloud(t); // ĐỒNG BỘ CLOUD
+                updateTripOnCloud(t); 
                 renderAdminList(); renderSeats();
             }
-        }
-
-        window.simulateGPSFraud = function() {
-            pushAlert({ id: Date.now(), type: 'GPS', busId: '77H-093.15', msg: `Mất tín hiệu định vị.`, time: new Date().toLocaleTimeString() });
-            checkFraudAlertsUI(); renderAIScoring();
         }
 
         function checkFraudAlertsUI() {
@@ -1238,7 +1230,7 @@
             if(targetBus && ['77H-093.15', '77H-093.25', '77H-093.31', '77H-093.37'].includes(targetBus)) {
                 t.busId = targetBus; 
                 DB.saveTrips(trips);
-                updateTripOnCloud(t); // ĐỒNG BỘ CLOUD
+                updateTripOnCloud(t); 
                 renderAdminList(); renderSeats(); renderDriverList(); renderBI();
             } else if(targetBus) { alert("Biển số không hợp lệ!"); }
         }
@@ -1311,14 +1303,14 @@
             let trips = DB.getTrips(); let t = trips.find(x => x.id === id);
             t.status = 'Hủy'; t.driverStatus = 'Đã hủy';
             DB.saveTrips(trips); 
-            updateTripOnCloud(t); // ĐỒNG BỘ CLOUD
+            updateTripOnCloud(t); 
             renderAdminList(); renderSeats(); renderDriverList(); renderBI();
         }
 
         function deleteTripPermanently(id) {
             if(confirm("Xóa vĩnh viễn?")) {
                 let trips = DB.getTrips().filter(x => x.id !== id); DB.saveTrips(trips);
-                deleteTripOnCloud(id); // ĐỒNG BỘ CLOUD
+                deleteTripOnCloud(id); 
                 renderAdminList(); renderSeats(); renderDriverList(); renderBI();
             }
         }
@@ -1363,7 +1355,7 @@
             trip.driverStatus = status; 
             if (status === 'Đã xuống' && trip.paymentStatus === 'Chưa thu') { trip.paymentStatus = 'Đã nhận (Lơ thu)'; }
             DB.saveTrips(trips); 
-            updateTripOnCloud(trip); // ĐỒNG BỘ CLOUD
+            updateTripOnCloud(trip); 
             renderDriverList(); renderAdminList();
         }
         
@@ -1637,7 +1629,7 @@
             if (sessionStorage.getItem('userRole') !== 'admin') return;
             let locs = DB.getBusLocations();
             let thresholdMs = DB.getStopAlertMinutes() * 60 * 1000;
-            let adminNow = Date.now(); // Sử dụng đồng hồ máy Admin làm chuẩn tuyệt đối
+            let adminNow = Date.now(); 
 
             BUS_LIST.forEach(bus => {
                 let data = locs[bus];
@@ -1645,7 +1637,6 @@
                     window.busStopTracker[bus] = null; return; 
                 }
 
-                // Kiểm tra tín hiệu có cũ không (mất mạng > 45s)
                 let isFresh = (adminNow - data.timestamp) < STALE_MS;
                 if (!isFresh) { 
                     window.busStopTracker[bus] = null; return; 
@@ -1665,7 +1656,7 @@
                                 type: 'Dừng Lâu', 
                                 busId: bus, 
                                 msg: `Xe đã dừng liên tục khoảng ${mins} phút. Vui lòng kiểm tra Camera!`, 
-                                time: new Date().toLocaleTimeString() 
+                                time: new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false }) 
                             });
                             checkFraudAlertsUI(); renderAIScoring();
                             playAlertBeep();
