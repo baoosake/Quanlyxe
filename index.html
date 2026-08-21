@@ -62,7 +62,7 @@
 
         button.btn-calc { background: var(--primary); color: white; border: none; padding: 12px; border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; width: 100%; font-size: 14px; transition: 0.15s; box-shadow: var(--shadow-sm);}
         button.btn-calc:hover { background: var(--primary-dark); }
-        button.btn-submit { background-color: var(--accent); color: white; border: none; padding: 14px; width: 100%; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 10px; box-shadow: 0 6px 16px rgba(20,184,129,0.3); transition: 0.15s; }
+        button.btn-submit { background-color: var(--accent); color: white; border: none; padding: 14px; width: 100%; border-radius: var(--radius-sm); font-size: 15px; font-weight: 700; cursor: margin-top: 10px; box-shadow: 0 6px 16px rgba(20,184,129,0.3); transition: 0.15s; }
         button.btn-submit:hover { filter: brightness(0.95); transform: translateY(-1px); }
 
         .seat-container { background: #fbfcfe; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--line); margin-bottom: 12px; }
@@ -411,13 +411,18 @@
                 <button class="driver-filter-btn" id="dFilterDaXuong" onclick="setDriverFilter('Đã xuống')">✅ Đã xong</button>
             </div>
 
-            <!-- CẬP NHẬT: THÊM TÙY CHỌN TRẠNG THÁI CHO TÀI XẾ Ở ĐÂY -->
+            <!-- CẬP NHẬT: THÊM Ô NƠI ĐÓN / NƠI TRẢ CHO TÀI XẾ Ở ĐÂY -->
             <div style="background:white; padding:12px; border-radius:8px; border:1px solid #ddd; margin-bottom:12px; box-shadow:var(--shadow-sm);">
                 <h4 style="font-size:13px; color:#1a73e8; margin-bottom:8px;">➕ Thêm Khách / Hàng Phát Sinh Dọc Đường</h4>
                 <div class="form-row">
                     <input type="text" id="adhocName" placeholder="Tên khách/người gửi" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
                     <input type="text" id="adhocPhone" placeholder="SĐT (nếu có)" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
                     <input type="number" id="adhocPrice" placeholder="Giá tiền thu" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
+                </div>
+                <!-- Bổ sung Nơi Đón / Trả bắt buộc -->
+                <div class="form-row" style="margin-top:8px;">
+                    <input type="text" id="adhocPickup" placeholder="🟢 Nơi đón (bắt buộc)" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
+                    <input type="text" id="adhocDropoff" placeholder="🔴 Nơi trả (bắt buộc)" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
                 </div>
                 <div class="form-row" style="margin-top:8px;">
                     <select id="adhocType" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
@@ -1375,16 +1380,19 @@
 
         // TÀI XẾ: THÊM KHÁCH/HÀNG PHÁT SINH
         window.addAdhocTrip = function() {
-            const name = document.getElementById('adhocName').value;
-            const phone = document.getElementById('adhocPhone').value;
+            const name = document.getElementById('adhocName').value.trim();
+            const phone = document.getElementById('adhocPhone').value.trim();
             const price = parseInt(document.getElementById('adhocPrice').value) || 0;
+            const pickup = document.getElementById('adhocPickup').value.trim();
+            const dropoff = document.getElementById('adhocDropoff').value.trim();
             const type = document.getElementById('adhocType').value;
             const statusVal = document.getElementById('adhocStatus').value; // Chờ đón hoặc Đã lên xe
-            const note = document.getElementById('adhocNote').value;
+            const note = document.getElementById('adhocNote').value.trim();
             const currentBus = sessionStorage.getItem('currentBus') || '77H-093.15';
             const fDate = document.getElementById('filterDateDriver').value;
 
-            if(!name) return alert("Vui lòng nhập tên!");
+            if(!name) return alert("Vui lòng nhập tên khách/người gửi!");
+            if(!pickup || !dropoff) return alert("Vui lòng nhập đầy đủ Nơi đón và Nơi trả!");
             
             let finalSeat = type === 'Khách' ? 'Nằm luồng' : 'Hàng lẻ';
             let cusCat = '';
@@ -1409,8 +1417,8 @@
                 name: name + ' (Phát sinh)',
                 phone: phone || 'Không có',
                 seat: finalSeat,
-                pickup: 'Dọc đường',
-                dropoff: 'Dọc đường',
+                pickup: pickup,
+                dropoff: dropoff,
                 price: price,
                 paymentStatus: 'Chưa thu', // Đổi về Chưa thu để tài xế dễ dàng thao tác bấm nút thu tiền khi trả khách
                 driverStatus: statusVal,
@@ -1427,6 +1435,8 @@
             document.getElementById('adhocName').value = '';
             document.getElementById('adhocPhone').value = '';
             document.getElementById('adhocPrice').value = '';
+            document.getElementById('adhocPickup').value = '';
+            document.getElementById('adhocDropoff').value = '';
             document.getElementById('adhocNote').value = '';
             document.getElementById('adhocStatus').value = 'Chờ đón'; // reset lại
             renderDriverList();
