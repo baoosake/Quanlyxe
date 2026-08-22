@@ -381,7 +381,15 @@
         <!-- TAB 3: TÀI XẾ & LƠ XE -->
         <div id="tab-driver" class="tab-content" style="background: #e9ecef;">
             <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
-                <span id="driverBusName" style="color:#1a73e8; font-weight:bold; font-size:15px;">Xe đang lái</span>
+                <div id="driverBusSelectContainer" style="display:flex; align-items:center; gap:10px;">
+                    <span id="driverBusName" style="color:#1a73e8; font-weight:bold; font-size:15px; display:none;">Xe đang lái</span>
+                    <select id="adminDriverBusSelect" onchange="renderDriverList()" style="padding: 6px; border-radius: 4px; border: 1px solid #1a73e8; font-weight:bold; color:#1a73e8; display:none; outline:none;">
+                        <option value="77H-093.15">🚍 Xe 01 (77H-093.15)</option>
+                        <option value="77H-093.25">🚍 Xe 02 (77H-093.25)</option>
+                        <option value="77H-093.31">🚍 Xe 03 (77H-093.31)</option>
+                        <option value="77H-093.37">🚍 Xe 04 (77H-093.37)</option>
+                    </select>
+                </div>
                 <input type="date" id="filterDateDriver" onchange="renderDriverList()" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
             </div>
             
@@ -729,6 +737,15 @@
 
         window.currentProfile = null; 
 
+        // HÀM LẤY BIỂN SỐ XE DÀNH RIÊNG CHO TAB TÀI XẾ
+        window.getDriverTabBus = function() {
+            if(sessionStorage.getItem('userRole') === 'admin') {
+                const selectEl = document.getElementById('adminDriverBusSelect');
+                return selectEl ? selectEl.value : '77H-093.15';
+            }
+            return sessionStorage.getItem('currentBus') || '77H-093.15';
+        };
+
         // ====== ĐỒNG BỘ: Báo lỗi lên UI nếu RLS chặn update ======
         window.updateTripOnCloud = function(tripData) {
             if(useSupabase) {
@@ -1043,6 +1060,10 @@
                 switchTab('tab-admin', btn2); 
                 gpsLabel.style.display = 'none';
                 
+                // Mở dropdown chọn xe cho admin
+                document.getElementById('driverBusName').style.display = 'none';
+                if(document.getElementById('adminDriverBusSelect')) document.getElementById('adminDriverBusSelect').style.display = 'block';
+
                 if(document.getElementById('btnCleanData')) document.getElementById('btnCleanData').style.display = 'inline-block';
                 
                 if (useSupabase) {
@@ -1111,7 +1132,12 @@
             else if(role === 'driver') {
                 btn3.style.display = 'block'; switchTab('tab-driver', btn3);
                 const currentBus = sessionStorage.getItem('currentBus');
+                
+                // Ẩn dropdown, khóa cứng tên xe
+                if(document.getElementById('adminDriverBusSelect')) document.getElementById('adminDriverBusSelect').style.display = 'none';
+                document.getElementById('driverBusName').style.display = 'inline-block';
                 document.getElementById('driverBusName').innerText = "🚍 Đang lái: " + currentBus;
+                
                 gpsLabel.style.display = 'inline-block'; 
                 
                 startRealGPS(gpsLabel, currentBus);
@@ -1409,7 +1435,7 @@
             const type = document.getElementById('adhocType').value;
             const statusVal = document.getElementById('adhocStatus').value; // Chờ đón hoặc Đã lên xe
             const note = document.getElementById('adhocNote').value.trim();
-            const currentBus = sessionStorage.getItem('currentBus') || '77H-093.15';
+            const currentBus = getDriverTabBus(); // Sử dụng hàm mới
             const fDate = document.getElementById('filterDateDriver').value;
 
             if(!name) return alert("Vui lòng nhập tên khách/người gửi!");
@@ -1886,7 +1912,7 @@
 
         function renderDriverSeatMap() {
             const fDate = document.getElementById('filterDateDriver').value;
-            const currentBus = sessionStorage.getItem('currentBus') || '77H-093.15';
+            const currentBus = getDriverTabBus(); // Dùng hàm lấy xe cho Admin/Tài xế
             
             let container = document.getElementById('driverSeatMapContainer');
             if(currentDriverViewMode !== 'Khách') { container.style.display = 'none'; return; }
@@ -1942,15 +1968,14 @@
 
         function renderDriverList() {
             const fDate = document.getElementById('filterDateDriver').value;
-            const role = sessionStorage.getItem('userRole');
-            const currentBus = sessionStorage.getItem('currentBus');
+            const currentBus = getDriverTabBus(); // Dùng hàm mới hỗ trợ cho cả Admin
             
             // Vẽ sơ đồ ghế cho tài xế trước
             renderDriverSeatMap();
 
             // Lọc loại bỏ dữ liệu bị Hủy
             let trips = DB.getTrips().filter(t => t.date === fDate && t.status !== 'Hủy' && !t.status.includes('hủy') && !t.status.includes('Gian lận')); 
-            if(role === 'driver' && currentBus) trips = trips.filter(t => t.busId === currentBus);
+            trips = trips.filter(t => t.busId === currentBus);
 
             // Phân tách Khách / Hàng
             trips = trips.filter(t => currentDriverViewMode === 'Khách' ? t.type === 'Khách' : t.type === 'Hàng');
@@ -1994,6 +2019,9 @@
                 let isDone = t.driverStatus === 'Đã xuống';
                 let opacityStyle = isDone ? 'opacity: 0.65; filter: grayscale(80%); border-left-color: #6c757d;' : '';
 
+                // KIỂM TRA QUYỀN SỬA: CHỈ HIỆN KHI LÀ ĐƠN "PHÁT SINH" CỦA TÀI XẾ
+                let editBtn = (t.route === 'Phát sinh') ? `<button onclick="openDriverEditModal('${t.id}')" style="background:#ffc107; color:#333; border:none; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">✏️ Sửa</button>` : '';
+
                 if (currentDriverViewMode === 'Khách') {
                     let catBadge = '';
                     if (t.customerCategory === 'Đi đôi') catBadge = '<span class="badge" style="background:#ff9800; margin-left:5px;">👥 Đi đôi</span>';
@@ -2004,7 +2032,7 @@
                             <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
                                 <h3 style="margin:0; font-size:14px; display:flex; align-items:center;">${escapeHtml(t.seat)} - ${escapeHtml(t.name)} ${catBadge}</h3>
                                 <div style="display:flex; gap:5px;">
-                                    <button onclick="openDriverEditModal('${t.id}')" style="background:#ffc107; color:#333; border:none; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">✏️ Sửa</button>
+                                    ${editBtn}
                                     <a href="tel:${escapeHtml(t.phone)}" style="font-size:12px; background:green; color:white; padding:4px 8px; border-radius:6px; text-decoration:none;">📞 Gọi</a>
                                 </div>
                             </div>
@@ -2024,7 +2052,7 @@
                             <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
                                 <h3 style="margin:0; font-size:14px; color:#6f42c1;">📦 ${cargoStr}${weightStr}${qtyStr}</h3>
                                 <div style="display:flex; gap:5px;">
-                                    <button onclick="openDriverEditModal('${t.id}')" style="background:#ffc107; color:#333; border:none; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">✏️ Sửa</button>
+                                    ${editBtn}
                                     <a href="tel:${escapeHtml(t.phone)}" style="font-size:12px; background:green; color:white; padding:4px 8px; border-radius:6px; text-decoration:none;">📞 Gọi</a>
                                 </div>
                             </div>
@@ -2060,7 +2088,7 @@
             document.getElementById('driverList').innerHTML = html || "<p align='center' style='padding:20px; color:#777;'>Trống.</p>";
 
             let phoiTrips = DB.getTrips().filter(t => t.date === fDate && (t.driverStatus === 'Đã lên xe' || t.driverStatus === 'Đã xuống') && t.status !== 'Hủy');
-            if(role === 'driver' && currentBus) phoiTrips = phoiTrips.filter(t => t.busId === currentBus);
+            phoiTrips = phoiTrips.filter(t => t.busId === currentBus);
             
             document.getElementById('phoiTotalCus').innerText = phoiTrips.filter(t => t.type === 'Khách').length + " người";
             document.getElementById('phoiCash').innerText = formatMoney(phoiTrips.reduce((sum, t) => sum + ((t.paymentStatus === 'Chưa thu' || t.paymentStatus === 'Đã nhận (Lơ thu)') ? t.price : 0), 0));
@@ -2081,7 +2109,7 @@
         window.chotPhoiXe = function() { 
             const chiPhi = parseInt(document.getElementById('phoiChiPhi').value) || 0;
             const note = document.getElementById('phoiNote').value || 'Chi phí dọc đường';
-            const currentBus = sessionStorage.getItem('currentBus') || document.getElementById('busSelect').value;
+            const currentBus = getDriverTabBus(); // Sử dụng hàm lấy xe
 
             if(chiPhi > 0) {
                 let expenses = DB.getExpenses();
