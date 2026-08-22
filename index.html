@@ -411,7 +411,6 @@
                 <button class="driver-filter-btn" id="dFilterDaXuong" onclick="setDriverFilter('Đã xuống')">✅ Đã xong</button>
             </div>
 
-            <!-- CẬP NHẬT: THÊM Ô NƠI ĐÓN / NƠI TRẢ CHO TÀI XẾ Ở ĐÂY -->
             <div style="background:white; padding:12px; border-radius:8px; border:1px solid #ddd; margin-bottom:12px; box-shadow:var(--shadow-sm);">
                 <h4 style="font-size:13px; color:#1a73e8; margin-bottom:8px;">➕ Thêm Khách / Hàng Phát Sinh Dọc Đường</h4>
                 <div class="form-row">
@@ -419,7 +418,6 @@
                     <input type="text" id="adhocPhone" placeholder="SĐT (nếu có)" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
                     <input type="number" id="adhocPrice" placeholder="Giá tiền thu" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
                 </div>
-                <!-- Bổ sung Nơi Đón / Trả bắt buộc -->
                 <div class="form-row" style="margin-top:8px;">
                     <input type="text" id="adhocPickup" placeholder="🟢 Nơi đón (bắt buộc)" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
                     <input type="text" id="adhocDropoff" placeholder="🔴 Nơi trả (bắt buộc)" style="padding:8px; font-size:13px; border:1px solid #ccc; border-radius:4px; flex:1;">
@@ -646,6 +644,28 @@
         </div>
     </div>
 
+    <!-- MODAL SỬA ĐƠN CHO TÀI XẾ -->
+    <div id="driverEditModal" class="modal">
+        <div class="modal-content" style="max-width: 320px; padding:20px;">
+            <span class="close-modal" onclick="closeDriverEditModal()">✖</span>
+            <h3 style="color: #1a73e8; margin-bottom: 15px; font-size:15px;">SỬA THÔNG TIN ĐƠN</h3>
+            <input type="hidden" id="editTripId">
+            <div class="form-group" style="margin-bottom:10px; text-align:left;">
+                <label style="font-size:12px;">Điểm đón / Nơi gửi:</label>
+                <input type="text" id="editPickup" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
+            </div>
+            <div class="form-group" style="margin-bottom:10px; text-align:left;">
+                <label style="font-size:12px;">Điểm trả / Nơi nhận:</label>
+                <input type="text" id="editDropoff" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
+            </div>
+            <div class="form-group" style="margin-bottom:15px; text-align:left;">
+                <label style="font-size:12px;">Giá tiền / Cước (VNĐ):</label>
+                <input type="number" id="editPrice" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;">
+            </div>
+            <button class="btn-driver" style="background:#28a745; color:white;" onclick="saveDriverEdit()">💾 LƯU THAY ĐỔI</button>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
@@ -709,7 +729,7 @@
 
         window.currentProfile = null; 
 
-        // ====== FIXED LỖI ĐỒNG BỘ: Báo lỗi lên UI nếu RLS chặn update ======
+        // ====== ĐỒNG BỘ: Báo lỗi lên UI nếu RLS chặn update ======
         window.updateTripOnCloud = function(tripData) {
             if(useSupabase) {
                 supaClient.from('trips').upsert([tripData]).then(({error}) => {
@@ -1228,10 +1248,11 @@
             document.getElementById('finalPrice').value = document.getElementById('price').value;
         }
 
+        // => UPDATE: Loại bỏ ghế đã được đánh dấu Đã Xuống để cập nhật lại Trống
         function renderSeats() {
             if (document.getElementById('type').value === 'Hàng') return;
             const date = document.getElementById('date').value; const busId = document.getElementById('busSelect').value;
-            let booked = DB.getTrips().filter(t => t.date === date && t.busId === busId && t.status !== 'Hủy' && !t.status.includes('Gian lận') && t.type === 'Khách').map(t => t.seat);
+            let booked = DB.getTrips().filter(t => t.date === date && t.busId === busId && t.status !== 'Hủy' && !t.status.includes('Gian lận') && t.type === 'Khách' && t.driverStatus !== 'Đã xuống').map(t => t.seat);
 
             let mapDiv = document.getElementById('seatMap'); mapDiv.innerHTML = "";
             seatNames.forEach(seat => {
@@ -1420,7 +1441,7 @@
                 pickup: pickup,
                 dropoff: dropoff,
                 price: price,
-                paymentStatus: 'Chưa thu', // Đổi về Chưa thu để tài xế dễ dàng thao tác bấm nút thu tiền khi trả khách
+                paymentStatus: 'Chưa thu', 
                 driverStatus: statusVal,
                 status: 'Bình thường',
                 customerCategory: cusCat,
@@ -1446,6 +1467,38 @@
         window.promptAddAdhoc = function(seat) {
             document.getElementById('adhocNote').value = `Ghế ${seat}`;
             document.getElementById('adhocName').focus();
+        }
+        
+        // MODAL SỬA THÔNG TIN ĐƠN (Cho Tài xế)
+        window.openDriverEditModal = function(id) {
+            let t = DB.getTrips().find(x => String(x.id) === String(id));
+            if(!t) return;
+            document.getElementById('editTripId').value = t.id;
+            document.getElementById('editPickup').value = t.pickup;
+            document.getElementById('editDropoff').value = t.dropoff;
+            document.getElementById('editPrice').value = t.price;
+            document.getElementById('driverEditModal').style.display = 'flex';
+        }
+        
+        window.closeDriverEditModal = function() {
+            document.getElementById('driverEditModal').style.display = 'none';
+        }
+        
+        window.saveDriverEdit = function() {
+            let id = document.getElementById('editTripId').value;
+            let trips = DB.getTrips();
+            let trip = trips.find(x => String(x.id) === String(id));
+            if(trip) {
+                trip.pickup = document.getElementById('editPickup').value;
+                trip.dropoff = document.getElementById('editDropoff').value;
+                trip.price = parseInt(document.getElementById('editPrice').value) || 0;
+                
+                DB.saveTrips(trips);
+                updateTripOnCloud(trip);
+                renderDriverList();
+                renderAdminList();
+            }
+            closeDriverEditModal();
         }
 
         function pushAlert(alertObj) {
@@ -1627,40 +1680,47 @@
             let cargos = filteredTripsForDay.filter(t => t.type === 'Hàng');
 
             let passWaiting = passengers.filter(t => t.driverStatus === 'Chờ đón' && t.status !== 'Hủy' && !t.status.includes('hủy') && !t.status.includes('Gian lận')).length;
-            let passBoarded = passengers.filter(t => t.driverStatus === 'Đã lên xe' || t.driverStatus === 'Đã xuống').length;
+            let passBoarded = passengers.filter(t => t.driverStatus === 'Đã lên xe' && t.status !== 'Hủy' && !t.status.includes('hủy')).length;
+            let passDone = passengers.filter(t => t.driverStatus === 'Đã xuống' && t.status !== 'Hủy' && !t.status.includes('hủy')).length;
 
             let cargoWaiting = cargos.filter(t => t.driverStatus === 'Chờ đón' && t.status !== 'Hủy' && !t.status.includes('hủy') && !t.status.includes('Gian lận')).length;
-            let cargoBoarded = cargos.filter(t => t.driverStatus === 'Đã lên xe' || t.driverStatus === 'Đã xuống').length;
+            let cargoBoarded = cargos.filter(t => t.driverStatus === 'Đã lên xe' && t.status !== 'Hủy' && !t.status.includes('hủy')).length;
+            let cargoDone = cargos.filter(t => t.driverStatus === 'Đã xuống' && t.status !== 'Hủy' && !t.status.includes('hủy')).length;
 
             let countCancelled = filteredTripsForDay.filter(t => t.status === 'Hủy' || t.status.includes('hủy') || t.status.includes('Gian lận')).length;
             
             let passNamLuong = passengers.filter(t => t.customerCategory === 'Nằm luồng' && t.status !== 'Hủy' && !t.status.includes('hủy') && !t.status.includes('Gian lận')).length;
 
             document.getElementById('adminMiniDash').innerHTML = `
-                <div class="mini-dash-card" style="border-left: 4px solid #ffc107; cursor:pointer; background:${adminFilterStatus==='ChoDon'?'#fff8e1':'white'}; flex:1; min-width: 140px;" onclick="setAdminFilter('ChoDon')">
-                    <span>🟡 Chờ Đón/Nhận</span>
-                    <b style="color:#ffc107; font-size:14px; margin-top:6px;">👤: ${passWaiting} &nbsp;|&nbsp; 📦: ${cargoWaiting}</b>
+                <div class="mini-dash-card" style="border-left: 4px solid #ffc107; cursor:pointer; background:${adminFilterStatus==='ChoDon'?'#fff8e1':'white'}; flex:1; min-width: 110px;" onclick="setAdminFilter('ChoDon')">
+                    <span>🟡 Chờ Đón</span>
+                    <b style="color:#ffc107; font-size:13px; margin-top:6px;">👤: ${passWaiting} | 📦: ${cargoWaiting}</b>
                 </div>
-                <div class="mini-dash-card" style="border-left: 4px solid #28a745; cursor:pointer; background:${adminFilterStatus==='DaDon'?'#e8f5e9':'white'}; flex:1; min-width: 140px;" onclick="setAdminFilter('DaDon')">
-                    <span>🟢 Đã Lên/Nhận</span>
-                    <b style="color:#28a745; font-size:14px; margin-top:6px;">👤: ${passBoarded} &nbsp;|&nbsp; 📦: ${cargoBoarded}</b>
+                <div class="mini-dash-card" style="border-left: 4px solid #28a745; cursor:pointer; background:${adminFilterStatus==='DaDon'?'#e8f5e9':'white'}; flex:1; min-width: 110px;" onclick="setAdminFilter('DaDon')">
+                    <span>🟢 Đang Lên Xe</span>
+                    <b style="color:#28a745; font-size:13px; margin-top:6px;">👤: ${passBoarded} | 📦: ${cargoBoarded}</b>
                 </div>
-                <div class="mini-dash-card" style="border-left: 4px solid #dc3545; cursor:pointer; background:${adminFilterStatus==='Huy'?'#ffebee':'white'}; flex:1; min-width: 140px;" onclick="setAdminFilter('Huy')">
+                <div class="mini-dash-card" style="border-left: 4px solid #17a2b8; cursor:pointer; background:${adminFilterStatus==='DaXong'?'#e0f7fa':'white'}; flex:1; min-width: 110px;" onclick="setAdminFilter('DaXong')">
+                    <span>✅ Đã Trả Khách</span>
+                    <b style="color:#17a2b8; font-size:13px; margin-top:6px;">👤: ${passDone} | 📦: ${cargoDone}</b>
+                </div>
+                <div class="mini-dash-card" style="border-left: 4px solid #dc3545; cursor:pointer; background:${adminFilterStatus==='Huy'?'#ffebee':'white'}; flex:1; min-width: 110px;" onclick="setAdminFilter('Huy')">
                     <span>🔴 Lỗi / Hủy</span>
-                    <b style="color:#dc3545; font-size:14px; margin-top:6px;">Tổng cộng: ${countCancelled} đơn</b>
+                    <b style="color:#dc3545; font-size:13px; margin-top:6px;">Tổng: ${countCancelled}</b>
                 </div>
-                <div class="mini-dash-card" style="border-left: 4px solid #6f42c1; cursor:pointer; background:${adminFilterStatus==='NamLuong'?'#f3e5f5':'white'}; flex:1; min-width: 140px;" onclick="setAdminFilter('NamLuong')">
-                    <span>🛋️ Nằm Luồng</span>
-                    <b style="color:#6f42c1; font-size:14px; margin-top:6px;">Tổng: ${passNamLuong} khách</b>
+                <div class="mini-dash-card" style="border-left: 4px solid #6f42c1; cursor:pointer; background:${adminFilterStatus==='NamLuong'?'#f3e5f5':'white'}; flex:1; min-width: 110px;" onclick="setAdminFilter('NamLuong')">
+                    <span>🛋️ Luồng</span>
+                    <b style="color:#6f42c1; font-size:13px; margin-top:6px;">Khách: ${passNamLuong}</b>
                 </div>
-                <div class="mini-dash-card" style="border-left: 4px solid #1a73e8; cursor:pointer; background:${adminFilterStatus==='All'?'#e8f0fe':'white'}; flex:1; min-width: 140px;" onclick="setAdminFilter('All')">
-                    <span>📋 Tổng Hôm Nay</span>
-                    <b style="color:#1a73e8; font-size:14px; margin-top:6px;">👤: ${passengers.length} &nbsp;|&nbsp; 📦: ${cargos.length}</b>
+                <div class="mini-dash-card" style="border-left: 4px solid #1a73e8; cursor:pointer; background:${adminFilterStatus==='All'?'#e8f0fe':'white'}; flex:1; min-width: 110px;" onclick="setAdminFilter('All')">
+                    <span>📋 Tất cả</span>
+                    <b style="color:#1a73e8; font-size:13px; margin-top:6px;">👤: ${passengers.length} | 📦: ${cargos.length}</b>
                 </div>
             `;
 
             let trips = filteredTripsForDay;
-            if(adminFilterStatus === 'DaDon') trips = trips.filter(t => t.driverStatus === 'Đã lên xe' || t.driverStatus === 'Đã xuống');
+            if(adminFilterStatus === 'DaDon') trips = trips.filter(t => t.driverStatus === 'Đã lên xe');
+            else if(adminFilterStatus === 'DaXong') trips = trips.filter(t => t.driverStatus === 'Đã xuống');
             else if(adminFilterStatus === 'ChoDon') trips = trips.filter(t => t.driverStatus === 'Chờ đón' && t.status !== 'Hủy' && !t.status.includes('hủy') && !t.status.includes('Gian lận'));
             else if(adminFilterStatus === 'Huy') trips = trips.filter(t => t.status === 'Hủy' || t.status.includes('hủy') || t.status.includes('Gian lận'));
             else if(adminFilterStatus === 'NamLuong') trips = trips.filter(t => t.customerCategory === 'Nằm luồng' && t.status !== 'Hủy' && !t.status.includes('hủy') && !t.status.includes('Gian lận'));
@@ -1697,10 +1757,12 @@
                     else if(t.customerCategory === 'Nằm luồng') categoryBadge = '<br><span style="font-size:10px; background:#6f42c1; color:#fff; padding:2px 4px; border-radius:4px;">🛋️ Luồng</span>';
                 }
 
+                let driverStatusColor = t.driverStatus === 'Đã xuống' ? '#17a2b8' : (t.driverStatus === 'Đã lên xe' ? '#28a745' : '#ffc107');
+
                 return `<tr style="${rowBg}">
                     <td><b>${escapeHtml(t.seat)}</b><br><small style="color:#1a73e8">${escapeHtml(t.busId)}</small></td>
                     <td><b>${escapeHtml(t.name)}</b>${categoryBadge}<br>${escapeHtml(t.phone)}</td>
-                    <td style="text-align:left; font-size:11px;">🟢 Đón: <b>${escapeHtml(t.pickup)}</b><br>🔴 Trả: <b>${escapeHtml(t.dropoff)}</b><br><small style="color:#555;">Trạng thái: <b>${escapeHtml(t.status)} (${escapeHtml(t.driverStatus)})</b></small></td>
+                    <td style="text-align:left; font-size:11px;">🟢 Đón: <b>${escapeHtml(t.pickup)}</b><br>🔴 Trả: <b>${escapeHtml(t.dropoff)}</b><br><small style="color:#555;">Trạng thái: <b>${escapeHtml(t.status)} (<span style="color:${driverStatusColor}">${escapeHtml(t.driverStatus)}</span>)</b></small></td>
                     <td><span class="badge" style="background:${badgeColor}">${escapeHtml(t.paymentStatus)}</span><br>${generateActionBtns(t)}</td>
                 </tr>`;
             }).join('') || `<tr><td colspan="4" style="color:#777; padding:15px;">Không có dữ liệu hành khách.</td></tr>`;
@@ -1712,10 +1774,12 @@
 
                 let qtyStr = t.cargoQuantity ? ` <span style="color:#dc3545; font-weight:bold;">(x${escapeHtml(t.cargoQuantity)} kiện)</span>` : ''; 
                 
+                let driverStatusColor = t.driverStatus === 'Đã xuống' ? '#17a2b8' : (t.driverStatus === 'Đã lên xe' ? '#28a745' : '#ffc107');
+
                 return `<tr style="${rowBg}">
                     <td><b style="color:#6f42c1">HÀNG HÓA</b><br><small style="color:#1a73e8">${escapeHtml(t.busId)}</small></td>
                     <td><b>${escapeHtml(t.cargoName || 'Không rõ')}</b>${qtyStr}<br><small>${escapeHtml(t.cargoWeight || 0)}kg</small></td>
-                    <td style="text-align:left; font-size:11px;">🟢 Gửi: <b>${escapeHtml(t.pickup)}</b><br>🔴 Nhận: <b>${escapeHtml(t.dropoff)}</b><br>Người gửi/nhận: ${escapeHtml(t.name)} - ${escapeHtml(t.phone)}<br><small style="color:#555;">Trạng thái: <b>${escapeHtml(t.status)} (${escapeHtml(t.driverStatus)})</b></small></td>
+                    <td style="text-align:left; font-size:11px;">🟢 Gửi: <b>${escapeHtml(t.pickup)}</b><br>🔴 Nhận: <b>${escapeHtml(t.dropoff)}</b><br>Người gửi/nhận: ${escapeHtml(t.name)} - ${escapeHtml(t.phone)}<br><small style="color:#555;">Trạng thái: <b>${escapeHtml(t.status)} (<span style="color:${driverStatusColor}">${escapeHtml(t.driverStatus)}</span>)</b></small></td>
                     <td><span class="badge" style="background:${badgeColor}">${escapeHtml(t.paymentStatus)}</span><br><b style="color:#1a73e8; font-size:13px; display:block; margin-top:5px; margin-bottom:5px;">${formatMoney(t.price)}</b>${generateActionBtns(t)}</td>
                 </tr>`;
             }).join('') || `<tr><td colspan="4" style="color:#777; padding:15px;">Không có dữ liệu hàng hóa.</td></tr>`;
@@ -1724,7 +1788,8 @@
                 if (fBus === 'All') {
                     document.getElementById('adminSeatMapGrid').innerHTML = `<p style="grid-column: span 4; text-align:center; padding: 20px; color: #d93025; font-weight:bold; border: 1px dashed #d93025; border-radius: 8px;">⚠️ Vui lòng chọn 1 biển số xe cụ thể ở bộ lọc phía trên để xem Sơ đồ ghế!</p>`;
                 } else {
-                    let activePassengerTrips = displayPassengers.filter(t => t.status !== 'Hủy' && !t.status.includes('hủy'));
+                    // => UPDATE: Loại bỏ t.driverStatus === 'Đã xuống' ra khỏi hiển thị chiếm chỗ của Sơ đồ Admin
+                    let activePassengerTrips = displayPassengers.filter(t => t.status !== 'Hủy' && !t.status.includes('hủy') && t.driverStatus !== 'Đã xuống');
                     let mapDiv = document.getElementById('adminSeatMapGrid');
                     mapDiv.innerHTML = "";
                     
@@ -1735,7 +1800,7 @@
                         let trip = activePassengerTrips.find(t => t.seat === seat);
                         if (trip) {
                             if (trip.status.includes('Gian lận')) div.classList.add('fraud');
-                            else if (trip.driverStatus === 'Đã lên xe' || trip.driverStatus === 'Đã xuống') div.classList.add('boarded');
+                            else if (trip.driverStatus === 'Đã lên xe') div.classList.add('boarded');
                             else if (trip.paymentStatus === 'Chưa thu') div.classList.add('unpaid');
                             else div.classList.add('paid');
 
@@ -1753,10 +1818,10 @@
                     let luongTrips = activePassengerTrips.filter(t => t.seat === 'Nằm luồng' || t.customerCategory === 'Nằm luồng');
                     if (luongTrips.length > 0) {
                         let luongHtml = `<div style="grid-column: 1 / -1; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #ccc;">
-                            <h4 style="color:#6f42c1; font-size:13px; margin-bottom:8px;">🛋️ DANH SÁCH KHÁCH NẰM LUỒNG (${luongTrips.length})</h4>
+                            <h4 style="color:#6f42c1; font-size:13px; margin-bottom:8px;">🛋️ DANH SÁCH KHÁCH NẰM LUỒNG ĐANG TRÊN XE (${luongTrips.length})</h4>
                             <div style="display:flex; gap:8px; flex-wrap:wrap;">`;
                         luongTrips.forEach(trip => {
-                             let statusClass = trip.status.includes('Gian lận') ? 'fraud' : (trip.driverStatus === 'Đã lên xe' || trip.driverStatus === 'Đã xuống' ? 'boarded' : (trip.paymentStatus === 'Chưa thu' ? 'unpaid' : 'paid'));
+                             let statusClass = trip.status.includes('Gian lận') ? 'fraud' : (trip.driverStatus === 'Đã lên xe' ? 'boarded' : (trip.paymentStatus === 'Chưa thu' ? 'unpaid' : 'paid'));
                              luongHtml += `<div class="admin-seat-box ${statusClass}" style="width: 80px;" onclick="showDriverSeatAction('${trip.id}')">
                                  <span>Luồng</span><small>${escapeHtml(trip.name)}</small>
                              </div>`;
@@ -1861,7 +1926,7 @@
             let luongTrips = activeTrips.filter(t => t.seat === 'Nằm luồng' || t.customerCategory === 'Nằm luồng');
             if (luongTrips.length > 0) {
                 let luongHtml = `<div style="grid-column: 1 / -1; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
-                    <h5 style="color:#6f42c1; font-size:12px; margin-bottom:6px;">🛋️ KHÁCH NẰM LUỒNG (${luongTrips.length})</h5>
+                    <h5 style="color:#6f42c1; font-size:12px; margin-bottom:6px;">🛋️ KHÁCH NẰM LUỒNG ĐANG TRÊN XE (${luongTrips.length})</h5>
                     <div style="display:flex; gap:6px; flex-wrap:wrap;">`;
                 luongTrips.forEach(trip => {
                     let isBoarded = trip.driverStatus === 'Đã lên xe';
@@ -1875,7 +1940,6 @@
             }
         }
 
-        // CẬP NHẬT: TÁCH RIÊNG KHÁCH NẰM LUỒNG RA KHỎI ĐIỂM ĐÓN
         function renderDriverList() {
             const fDate = document.getElementById('filterDateDriver').value;
             const role = sessionStorage.getItem('userRole');
@@ -1939,7 +2003,10 @@
                     return `<div class="driver-card ${isBoarded ? 'da-don' : ''}" style="${opacityStyle}">
                             <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
                                 <h3 style="margin:0; font-size:14px; display:flex; align-items:center;">${escapeHtml(t.seat)} - ${escapeHtml(t.name)} ${catBadge}</h3>
-                                <a href="tel:${escapeHtml(t.phone)}" style="font-size:12px; background:green; color:white; padding:4px 8px; border-radius:6px; text-decoration:none;">📞 Gọi</a>
+                                <div style="display:flex; gap:5px;">
+                                    <button onclick="openDriverEditModal('${t.id}')" style="background:#ffc107; color:#333; border:none; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">✏️ Sửa</button>
+                                    <a href="tel:${escapeHtml(t.phone)}" style="font-size:12px; background:green; color:white; padding:4px 8px; border-radius:6px; text-decoration:none;">📞 Gọi</a>
+                                </div>
                             </div>
                             <p style="font-size:12px; margin-bottom:4px;">Đón: ${escapeHtml(t.pickup)} <br> Trả: ${escapeHtml(t.dropoff)}</p>
                             <p style="font-size:13px; color: ${t.paymentStatus==='Chưa thu' ? 'red' : 'green'}; font-weight:bold;">Thu tiền: ${escapeHtml(t.paymentStatus)} (${formatMoney(t.price)})</p>
@@ -1956,7 +2023,10 @@
                     return `<div class="driver-card ${isBoarded ? 'da-don' : ''}" style="border-left-color: #6f42c1; ${opacityStyle}">
                             <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
                                 <h3 style="margin:0; font-size:14px; color:#6f42c1;">📦 ${cargoStr}${weightStr}${qtyStr}</h3>
-                                <a href="tel:${escapeHtml(t.phone)}" style="font-size:12px; background:green; color:white; padding:4px 8px; border-radius:6px; text-decoration:none;">📞 Gọi</a>
+                                <div style="display:flex; gap:5px;">
+                                    <button onclick="openDriverEditModal('${t.id}')" style="background:#ffc107; color:#333; border:none; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">✏️ Sửa</button>
+                                    <a href="tel:${escapeHtml(t.phone)}" style="font-size:12px; background:green; color:white; padding:4px 8px; border-radius:6px; text-decoration:none;">📞 Gọi</a>
+                                </div>
                             </div>
                             <p style="font-size:12px; margin-bottom:4px;">Người gửi/nhận: <b>${escapeHtml(t.name)}</b></p>
                             <p style="font-size:12px; margin-bottom:4px;">Gửi: ${escapeHtml(t.pickup)} <br> Nhận: ${escapeHtml(t.dropoff)}</p>
@@ -2005,7 +2075,7 @@
             if (status === 'Đã xuống' && trip.paymentStatus === 'Chưa thu') { trip.paymentStatus = 'Đã nhận (Lơ thu)'; }
             DB.saveTrips(trips); 
             updateTripOnCloud(trip); 
-            renderDriverList(); renderAdminList();
+            renderDriverList(); renderAdminList(); renderSeats();
         }
         
         window.chotPhoiXe = function() { 
